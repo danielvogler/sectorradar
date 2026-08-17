@@ -1,0 +1,75 @@
+---
+# Agentic AI & GenAI enablement providers in Switzerland.
+#
+# Everything segment-specific lives in this file. Adding a second segment is
+# adding a second file — if it ever needs a code change, the abstraction is
+# wrong and the abstraction is what to fix.
+slug: agentic-ai-ch
+name: Agentic AI & GenAI enablement providers, Switzerland
+
+geo:
+  country: CH
+  cantons: null            # null = all
+
+# Injected verbatim into the classifier prompt. The hard part of this project
+# is not the search, it is the boundary — so this prose is the most important
+# text in the repository.
+inclusion: >
+  Include a company if it offers, as a named service on its own website,
+  either (a) development of LLM agents / agentic systems for clients, or
+  (b) GenAI enablement workshops or training for organisations.
+  Exclude pure product/SaaS companies with no services arm.
+  Exclude companies with no Swiss presence.
+  Exclude individual freelancers with no registered company.
+
+tiers:
+  1: "Agentic AI or GenAI services are the primary offering"
+  2: "Broader AI/data consultancy that also ships agents or runs GenAI workshops"
+  3: "General digital agency or system integrator with an AI service line"
+  4: "Training provider or solo consultant offering GenAI workshops"
+
+enrich_tiers: [1, 2]       # tier 3/4 stay as unenriched candidates
+
+# Facets are fixed; values are open. The classifier may emit a new value within
+# a known facet, but may never invent a facet.
+facets:
+  service_type: [agent_dev, workshops, strategy, rag, automation, staffing, mlops]
+  delivery_model: [project, retainer, product, training, staff_aug]
+  vertical: [finance, insurance, pharma, public, retail, industrial, legal, none]
+  tech: [langchain, langgraph, openai, anthropic, azure_openai, n8n, custom]
+
+sources:
+  seeds:
+    enabled: true
+    urls: []               # populated in phase 2
+
+  websearch:
+    enabled: true
+    queries:
+      - "AI Agenten Entwicklung Schweiz"
+      - "agentic AI consulting Switzerland"
+      - "GenAI Workshop Unternehmen Schweiz"
+      - "KI Beratung Schweiz LLM"
+      - "AI agency Zurich"
+      - 'site:.ch "AI agents" Beratung'
+      - 'site:.ch "GenAI Workshop"'
+
+  jobads:
+    enabled: true
+    keywords: [LangGraph, "AI Engineer", agentic, "LLM Engineer", RAG]
+
+  directories:
+    enabled: true
+    sites: [goodfirms.co, designrush.com, clutch.co, sortlist.ch]
+
+  lindas:
+    enabled: true
+    purpose_terms:
+      - "Künstliche Intelligenz"
+      - "KI-Beratung"
+      - "intelligence artificielle"
+    note: "High recall, terrible precision. Candidates only, never auto-include."
+
+# Recall is measured against this list on every run. It is the single most
+# important number in the project.
+gold_set: []               # populated in phase 2

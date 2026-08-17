@@ -1,0 +1,30 @@
+# gitleaks configuration.
+#
+# This file exists only to stop `gitleaks detect --no-git` reporting findings
+# from directories that are not part of the repository. `--no-git` walks the
+# working tree as plain files, so it descends into the virtualenv and the
+# collected-data directory, neither of which is ever committed.
+#
+# It deliberately does NOT allowlist any rule, pattern or repository path.
+# Every file that can actually reach a commit is still scanned, here and by the
+# separate gitleaks job in CI, which scans the full git history where these
+# directories have never existed.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Paths that are not repository content"
+paths = [
+  # Third-party packages installed by `uv sync`. The two findings that prompted
+  # this entry are high-entropy identifier strings in a minified pydeck source
+  # map (.venv/share/jupyter/nbextensions/pydeck/index.js.map), not credentials.
+  '''^\.venv/''',
+  # Collected data: gitignored by design, blocked from commits by the
+  # `no-collected-data` pre-commit hook, and full of arbitrary crawled HTML
+  # that trips the generic-api-key heuristic constantly. See DATA.md.
+  '''^data/''',
+  # Tool caches.
+  '''^\.(ruff_cache|mypy_cache|pytest_cache)/''',
+  '''^htmlcov/''',
+]
