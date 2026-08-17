@@ -39,7 +39,7 @@ log = get_logger(__name__)
 #: Seconds between requests to the same host.
 MIN_INTERVAL = 1.0
 #: Never take more than this many pages from one company.
-MAX_PAGES_PER_COMPANY = 8
+MAX_PAGES_PER_COMPANY = 10
 MAX_RETRIES = 3
 TIMEOUT = 20.0
 #: Companies crawled at once. The rate limit is per host and a company is one
@@ -49,6 +49,20 @@ MAX_WORKERS = 8
 #: Paths worth trying, in the three languages Swiss firms actually publish in.
 CANDIDATE_PATHS: tuple[str, ...] = (
     "/",
+    # Where the postal address actually lives. A Swiss company is legally
+    # required to publish one, and it is on the Impressum or Kontakt page far
+    # more often than anywhere else. Without these the extractor only ever saw
+    # a city name, so two thirds of the map sat on city centres rather than on
+    # the companies.
+    "/impressum",
+    "/kontakt",
+    "/contact",
+    "/imprint",
+    "/legal-notice",
+    "/de/impressum",
+    "/en/contact",
+    "/fr/contact",
+    # What they sell.
     "/services",
     "/leistungen",
     "/angebot",

@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib import filters, queries
 
-st.set_page_config(page_title="Table · sectorradar", page_icon="📋", layout="wide")
+st.set_page_config(page_title="Table · sectorradar", page_icon=":clipboard:", layout="wide")
 
 COLUMNS = [
     "certainty",
@@ -73,7 +73,7 @@ def decorate(segment: str, rows: list[dict[str, object]]) -> list[dict[str, obje
 
 
 def main() -> None:
-    st.title("📋 Overview")
+    st.title("Overview")
 
     if not queries.database_exists():
         filters.no_database_panel()
@@ -81,7 +81,7 @@ def main() -> None:
 
     segment = filters.pick_segment()
     if segment is None:
-        st.info("No segments in the database yet.", icon="🌱")
+        st.info("No segments in the database yet.")
         return
 
     state = filters.sidebar(segment)
@@ -100,7 +100,7 @@ def main() -> None:
         rows = [r for r in rows if float(r["certainty"]) >= floor]  # type: ignore[arg-type]
 
     if not rows:
-        st.info("Nothing matches these filters.", icon="🔍")
+        st.info("Nothing matches these filters.")
         return
 
     buckets: dict[str, int] = {}
@@ -149,6 +149,66 @@ def main() -> None:
         file_name=f"{segment}-ranked.csv",
         mime="text/csv",
     )
+
+    detail(segment, rows)
+
+
+def detail(segment: str, rows: list[dict[str, object]]) -> None:
+    """Answer "says who?" for one company, without needing a separate page.
+
+    The whole premise of this dataset is that every claim is checkable, so the
+    evidence has to be reachable from the list. It lives in an expander rather
+    than a page of its own: it is something you consult about a specific row,
+    not somewhere you navigate to.
+    """
+    with st.expander("Check the evidence behind one company"):
+        labels = {int(r["id"]): f"{r['canonical_name']} ({r['domain']})" for r in rows}
+        ids = list(labels)
+        chosen = st.selectbox(
+            "Company",
+            [None, *ids],
+            format_func=lambda i: "— pick one —" if i is None else labels[i],
+        )
+        if chosen is None:
+            st.caption(
+                "Pick a company to see every service claimed for it, the verbatim "
+                "sentence from their own website behind each one, and a link to the "
+                "page it came from."
+            )
+            return
+
+        row = next(r for r in rows if int(r["id"]) == int(chosen))
+        st.markdown(f"### {row['canonical_name']}")
+        st.markdown(f"[{row['domain']}](https://{row['domain']})")
+        if row.get("tier_rationale"):
+            st.info(str(row["tier_rationale"]))
+
+        offerings = queries.offerings(int(chosen))
+        if offerings:
+            for offering in offerings:
+                st.markdown(f"**{offering['label']}**")
+                st.markdown(f"> {offering['evidence_quote']}")
+                st.caption(f"[source]({offering['evidence_url']})")
+        else:
+            st.caption("No offerings extracted — the site did not clearly claim any.")
+
+        facts = [f for f in queries.fields(int(chosen)) if not str(f["field"]).startswith("_")]
+        if facts:
+            st.markdown("**Recorded facts and their sources**")
+            st.dataframe(
+                facts,
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "field": "Field",
+                    "value": "Value",
+                    "source_url": st.column_config.LinkColumn("Source"),
+                    "evidence_quote": "Evidence",
+                    "confidence": st.column_config.NumberColumn("Conf.", format="%.2f"),
+                    "extractor": "Extractor",
+                    "extracted_at": "Extracted",
+                },
+            )
 
 
 main()

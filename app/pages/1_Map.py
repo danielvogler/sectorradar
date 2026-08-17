@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib import filters, queries
 
-st.set_page_config(page_title="Map · sectorradar", page_icon="🗺️", layout="wide")
+st.set_page_config(page_title="Map · sectorradar", page_icon=":round_pushpin:", layout="wide")
 
 SWITZERLAND = (46.82, 8.23)
 INITIAL_ZOOM = 8
@@ -57,7 +57,7 @@ def popup_html(row: dict[str, object], tags: list[str]) -> str:
 
 
 def main() -> None:
-    st.title("🗺️ Map")
+    st.title("Map")
 
     if not queries.database_exists():
         filters.no_database_panel()
@@ -65,14 +65,14 @@ def main() -> None:
 
     segment = filters.pick_segment()
     if segment is None:
-        st.info("No segments in the database yet.", icon="🌱")
+        st.info("No segments in the database yet.")
         return
 
     state = filters.sidebar(segment, default_include_untiered=False)
     rows = filters.apply(state, require_coordinates=True)
 
     if not rows:
-        st.info("No companies match these filters, or none have been geocoded yet.", icon="🔍")
+        st.info("No companies match these filters, or none have been geocoded yet.")
         return
 
     tags = queries.tags_by_company(segment)
@@ -115,7 +115,7 @@ def main() -> None:
     if stacked:
         worst = stacked[0]
         with st.expander(
-            f"📍 {sum(int(s['n']) for s in stacked)} companies sit on a city centre, not their own address"
+            f"{sum(int(s['n']) for s in stacked)} companies sit on a city centre, not their own address"
         ):
             st.caption(
                 "A company whose website gives only a city is placed at that city's "
@@ -132,7 +132,7 @@ def main() -> None:
 
     missing = queries.without_coordinates(segment)
     if missing:
-        with st.expander(f"⚠️ {len(missing)} companies have no coordinates and are not shown"):
+        with st.expander(f"{len(missing)} companies have no coordinates and are not shown"):
             st.caption(
                 "Their site gave no address, or the address could not be placed in "
                 "Switzerland. Listed rather than dropped, so the map is not quietly "

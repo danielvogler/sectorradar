@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import queries
 
-st.set_page_config(page_title="sectorradar", page_icon="🛰️", layout="wide")
+st.set_page_config(page_title="sectorradar", page_icon=":satellite:", layout="wide")
 
 #: The facet that answers "what kind of business is this?". Others (tech,
 #: vertical, delivery model) are secondary and shown below it.
@@ -27,8 +27,8 @@ PRIMARY_FACET = "service_type"
 
 
 def no_database_panel() -> None:
-    st.title("🛰️ sectorradar")
-    st.warning("No database yet.", icon="📭")
+    st.title("sectorradar")
+    st.warning("No database yet.")
     st.markdown(
         """
         The explorer reads `data/radar.db`, which the pipeline creates.
@@ -60,11 +60,11 @@ def main() -> None:
         no_database_panel()
         return
 
-    st.title("🛰️ sectorradar")
+    st.title("sectorradar")
 
     available = queries.segments()
     if not available:
-        st.info("The database exists but holds no segments yet.", icon="🌱")
+        st.info("The database exists but holds no segments yet.")
         st.metric("Companies", 0)
         return
 
@@ -98,18 +98,34 @@ def main() -> None:
         facets: dict[str, list[dict[str, object]]] = data["facets"]  # type: ignore[assignment]
         primary = facets.get(PRIMARY_FACET) or []
         if primary:
-            st.caption("What these companies sell, from their own websites.")
-            st.bar_chart(
-                {str(r["value"]): [int(r["n"])] for r in primary},
-                horizontal=True,
-                height=max(200, 32 * len(primary)),
+            st.caption("What these companies sell, taken from their own websites.")
+            total_companies = int(data["total"])  # type: ignore[call-overload]
+            st.dataframe(
+                [
+                    {
+                        "does": str(r["value"]).replace("_", " "),
+                        "companies": int(r["n"]),
+                        "share": (int(r["n"]) / total_companies) if total_companies else 0.0,
+                    }
+                    for r in primary
+                ],
+                width="stretch",
+                hide_index=True,
+                height=min(460, 36 * (len(primary) + 1)),
+                column_config={
+                    "does": st.column_config.TextColumn("Does", width="medium"),
+                    "companies": st.column_config.NumberColumn("Companies", width="small"),
+                    "share": st.column_config.ProgressColumn(
+                        "Share", min_value=0.0, max_value=1.0, format="%.0f%%"
+                    ),
+                },
             )
         else:
             st.caption("No business categories yet — run `sectorradar classify`.")
 
         others = {f: v for f, v in facets.items() if f != PRIMARY_FACET and v}
         if others:
-            with st.expander("Other breakdowns (technology, vertical, delivery model)"):
+            with st.expander("Other breakdowns — technology, vertical, delivery model"):
                 for facet, values in others.items():
                     st.markdown(f"**{facet.replace('_', ' ')}**")
                     st.caption(" · ".join(f"{r['value']} ({r['n']})" for r in values[:12]))
