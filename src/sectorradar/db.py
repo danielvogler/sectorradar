@@ -169,6 +169,10 @@ ALTER TABLE candidate ADD COLUMN raw_city TEXT;
 ALTER TABLE candidate ADD COLUMN raw_canton TEXT;
 """
 
+_MIGRATION_004_GEOCODE_STATUS: Final = """
+ALTER TABLE company ADD COLUMN geocode_status TEXT;
+"""
+
 MIGRATIONS: Final[tuple[tuple[int, str, str], ...]] = (
     (1, "core tables and indexes", _MIGRATION_001_CORE),
     (2, "full-text search over searchable company text", _MIGRATION_002_FTS),
@@ -178,6 +182,16 @@ MIGRATIONS: Final[tuple[tuple[int, str, str], ...]] = (
     # thing that proves the idea — several stages further away than it needs
     # to be.
     (3, "carry a curator's location knowledge on the candidate", _MIGRATION_003_CANDIDATE_LOCATION),
+    # A null lat means two different things — "looked for and not found" and
+    # "never looked for" — and the geography check in classify needs to tell
+    # them apart. Conflating them excluded 21 companies in Zürich, Geneva and
+    # Lugano as foreign, because their tier had kept them out of the geocoding
+    # pass entirely.
+    (
+        4,
+        "record whether geocoding was attempted and what it concluded",
+        _MIGRATION_004_GEOCODE_STATUS,
+    ),
 )
 
 SCHEMA_VERSION: Final = max(step[0] for step in MIGRATIONS)
@@ -342,6 +356,7 @@ def upsert_company(
         "lon",
         "headcount_est",
         "founded_year",
+        "geocode_status",
         "languages",
         "status",
         "last_enriched",

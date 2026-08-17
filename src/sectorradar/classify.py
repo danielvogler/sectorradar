@@ -96,7 +96,7 @@ def build_prompt(
     )
 
 
-def fails_geography(city: str | None, lat: float | None, geocoded_any: bool) -> bool:
+def fails_geography(city: str | None, geocode_status: str | None) -> bool:
     """Whether recorded location contradicts the segment's country.
 
     A deterministic gate, deliberately not left to the prompt. The classifier is
@@ -105,18 +105,16 @@ def fails_geography(city: str | None, lat: float | None, geocoded_any: bool) -> 
     it had the evidence in front of it and tiered them anyway. Persuasion is
     the wrong instrument for a rule that can be evaluated.
 
-    The test uses the geocoder's own verdict. Geocoding runs before
-    classification and only accepts results inside the country (swisstopo is
-    Swiss-only; the Nominatim fallback is pinned with ``countrycodes``). So a
-    company that has a city but no coordinates is one whose city was looked for
-    in Switzerland and not found — which is exactly the question being asked.
+    The evidence is the geocoder's own verdict, which only accepts places
+    inside the country and only accepts an answer that is actually the place
+    asked for. ``geocode_status`` records what it concluded.
 
-    ``geocoded_any`` guards against the case where geocoding has not run at all,
-    where every company would look foreign.
+    It has to be the *status*, not a null ``lat``. A missing coordinate means
+    two different things — "looked for and not found" and "never looked for" —
+    and reading it as the first excluded 21 real companies in Zürich, Geneva
+    and Lugano whose tier had simply kept them out of the geocoding pass.
     """
-    if not geocoded_any:
-        return False
-    return bool(city) and lat is None
+    return bool(city) and geocode_status == "not_found"
 
 
 def _to_classify(conn: sqlite3.Connection, segment: Segment, *, force: bool) -> list[sqlite3.Row]:
@@ -129,7 +127,7 @@ def _to_classify(conn: sqlite3.Connection, segment: Segment, *, force: bool) -> 
     clause = "" if force else "AND COALESCE(m.review_state, 'pending') = 'pending'"
     sql = f"""
         SELECT c.id, c.domain, c.one_liner, c.city, c.canton, c.country,
-               c.lat, m.review_state
+               c.geocode_status, m.review_state
           FROM company c
           JOIN membership m ON m.company_id = c.id
          WHERE m.segment_slug = ?
@@ -162,22 +160,11 @@ def classify(
     if not force:
         report.skipped_reviewed = int(reviewed["n"])
 
-    # Has geocoding run at all? Without it every company looks foreign.
-    geocoded_any = bool(
-        conn.execute(
-            """
-            SELECT 1 FROM company c JOIN membership m ON m.company_id = c.id
-             WHERE m.segment_slug = ? AND c.lat IS NOT NULL LIMIT 1
-            """,
-            (segment.slug,),
-        ).fetchone()
-    )
-
     for row in _to_classify(conn, segment, force=force):
         company_id, domain = int(row["id"]), str(row["domain"])
         report.considered += 1
 
-        if fails_geography(row["city"], row["lat"], geocoded_any):
+        if fails_geography(row["city"], row["geocode_status"]):
             # Settled without spending a call: the company's own recorded city
             # could not be found in the segment's country.
             report.out_of_area += 1

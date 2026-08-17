@@ -340,12 +340,20 @@ def geocode(
 
             if point is None:
                 report.failed += 1
+                if not dry_run:
+                    # Record the attempt. A null lat alone cannot distinguish
+                    # "looked for and not found" from "never looked for", and
+                    # the geography check downstream depends on the difference.
+                    conn.execute(
+                        "UPDATE company SET geocode_status = 'not_found' WHERE id = ?",
+                        (row["id"],),
+                    )
                 continue
 
             report.geocoded += 1
             if not dry_run:
                 conn.execute(
-                    "UPDATE company SET lat = ?, lon = ? WHERE id = ?",
+                    "UPDATE company SET lat = ?, lon = ?, geocode_status = 'ok' WHERE id = ?",
                     (point.lat, point.lon, row["id"]),
                 )
 

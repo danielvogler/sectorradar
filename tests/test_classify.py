@@ -246,23 +246,26 @@ def test_dry_run_writes_nothing(conn: sqlite3.Connection, settings: Settings) ->
 # --- the geography gate -----------------------------------------------------
 
 
-def test_a_city_that_did_not_geocode_fails_geography() -> None:
-    """Geocoding only accepts Swiss results, so a city with no coordinates is foreign."""
-    assert classify.fails_geography("Toronto", None, geocoded_any=True)
+def test_a_city_the_geocoder_could_not_find_fails_geography() -> None:
+    """The geocoder only accepts Swiss places, so 'not_found' means not Swiss."""
+    assert classify.fails_geography("Toronto", "not_found")
 
 
 def test_a_geocoded_city_passes() -> None:
-    assert not classify.fails_geography("Zürich", 47.37, geocoded_any=True)
+    assert not classify.fails_geography("Zürich", "ok")
 
 
 def test_no_recorded_city_is_not_a_geography_failure() -> None:
     """Absent evidence goes to the model to weigh, not to an automatic rejection."""
-    assert not classify.fails_geography(None, None, geocoded_any=True)
+    assert not classify.fails_geography(None, "not_found")
 
 
-def test_the_gate_is_inert_before_geocoding_has_run() -> None:
-    """Without geocoding every company has a null lat and would look foreign."""
-    assert not classify.fails_geography("Toronto", None, geocoded_any=False)
+def test_a_company_geocoding_never_reached_is_not_excluded() -> None:
+    """The bug this replaced: 21 companies in Zürich, Geneva and Lugano were
+    called foreign because their tier had kept them out of the geocoding pass,
+    so their coordinate was null for a reason that had nothing to do with where
+    they are."""
+    assert not classify.fails_geography("Zürich", None)
 
 
 def test_an_out_of_area_company_is_rejected_without_an_llm_call(
@@ -276,11 +279,21 @@ def test_an_out_of_area_company_is_rejected_without_an_llm_call(
     db.upsert_segment(conn, SEGMENT.slug, SEGMENT.name, "slug: test-seg")
     # One properly located company, so the gate knows geocoding has run.
     swiss_id = db.upsert_company(
-        conn, domain="swiss.ch", canonical_name="Swiss", city="Zürich", lat=47.37, lon=8.54
+        conn,
+        domain="swiss.ch",
+        canonical_name="Swiss",
+        city="Zürich",
+        lat=47.37,
+        lon=8.54,
+        geocode_status="ok",
     )
     db.upsert_membership(conn, segment_slug=SEGMENT.slug, company_id=swiss_id)
     foreign_id = db.upsert_company(
-        conn, domain="foreign.com", canonical_name="Foreign", city="Toronto"
+        conn,
+        domain="foreign.com",
+        canonical_name="Foreign",
+        city="Toronto",
+        geocode_status="not_found",
     )
     db.upsert_membership(conn, segment_slug=SEGMENT.slug, company_id=foreign_id)
     conn.commit()
