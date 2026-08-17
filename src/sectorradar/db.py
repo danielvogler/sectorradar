@@ -164,9 +164,20 @@ CREATE VIRTUAL TABLE IF NOT EXISTS company_fts USING fts5(
 );
 """
 
+_MIGRATION_003_CANDIDATE_LOCATION: Final = """
+ALTER TABLE candidate ADD COLUMN raw_city TEXT;
+ALTER TABLE candidate ADD COLUMN raw_canton TEXT;
+"""
+
 MIGRATIONS: Final[tuple[tuple[int, str, str], ...]] = (
     (1, "core tables and indexes", _MIGRATION_001_CORE),
     (2, "full-text search over searchable company text", _MIGRATION_002_FTS),
+    # A hand-curated seed list knows where a firm sits, and that is the only
+    # location signal available before any page has been fetched. Without it
+    # geocoding cannot run until after extraction, which puts the map — the
+    # thing that proves the idea — several stages further away than it needs
+    # to be.
+    (3, "carry a curator's location knowledge on the candidate", _MIGRATION_003_CANDIDATE_LOCATION),
 )
 
 SCHEMA_VERSION: Final = max(step[0] for step in MIGRATIONS)
@@ -284,15 +295,27 @@ def insert_candidate(
     raw_url: str | None,
     source_detail: str | None,
     discovered_at: str | None = None,
+    raw_city: str | None = None,
+    raw_canton: str | None = None,
 ) -> int:
     """Append a candidate. Returns its row id."""
     cur = conn.execute(
         """
         INSERT INTO candidate
-          (segment_slug, raw_name, raw_url, source, source_detail, discovered_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+          (segment_slug, raw_name, raw_url, source, source_detail, discovered_at,
+           raw_city, raw_canton)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (segment_slug, raw_name, raw_url, source, source_detail, discovered_at or _now()),
+        (
+            segment_slug,
+            raw_name,
+            raw_url,
+            source,
+            source_detail,
+            discovered_at or _now(),
+            raw_city,
+            raw_canton,
+        ),
     )
     return int(cur.lastrowid or 0)
 

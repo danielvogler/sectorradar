@@ -17,14 +17,23 @@ from __future__ import annotations
 import platform
 import sqlite3
 import sys
-from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from sectorradar import __version__, db
+from sectorradar import discover as discover_mod
+from sectorradar import geocode as geocode_mod
 from sectorradar import logging as slogging
-from sectorradar.config import ConfigError, Segment, available_segments, load_segment, load_settings
+from sectorradar import resolve as resolve_mod
+from sectorradar.config import (
+    ConfigError,
+    Segment,
+    Settings,
+    available_segments,
+    load_segment,
+    load_settings,
+)
 
 app = typer.Typer(
     name="sectorradar",
@@ -77,7 +86,7 @@ def _die(message: str) -> None:
     raise typer.Exit(EXIT_FAILURE)
 
 
-def _setup(slug: str, *, verbose: bool) -> tuple[Segment, Path]:
+def _setup(slug: str, *, verbose: bool) -> tuple[Segment, Settings]:
     """Load settings and the segment, or exit 1 with something actionable."""
     try:
         settings = load_settings()
@@ -93,7 +102,10 @@ def _setup(slug: str, *, verbose: bool) -> tuple[Segment, Path]:
         _die(str(exc))
         raise AssertionError from None
 
-    return segment, settings.db_path
+    if not settings.db_path.exists():
+        _die(f"no database at {settings.db_path} — run `sectorradar init` first")
+
+    return segment, settings
 
 
 def _not_implemented(stage: str) -> None:
@@ -178,15 +190,41 @@ def discover(
     verbose: VerboseOpt = False,
 ) -> None:
     """Run discovery sources and record candidate companies."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("discover")
+    seg, settings = _setup(segment, verbose=verbose)
+    try:
+        with db.connect(settings.db_path) as conn:
+            report = discover_mod.discover(
+                conn,
+                seg,
+                settings,
+                sources=[source] if source else None,
+                limit=limit,
+                dry_run=dry_run,
+            )
+    except ValueError as exc:
+        _die(str(exc))
+        return
+
+    for result in report.results:
+        status = f"ERROR {result.error}" if result.error else f"{result.new_unique} new"
+        print(f"  {result.source:<14} {result.found:>4} found  {status}")
+    print(f"discovered {report.total_found} candidates, {report.total_new} new")
+    if report.errors:
+        raise typer.Exit(EXIT_FAILURE)
 
 
 @app.command()
 def resolve(segment: SegmentOpt, dry_run: DryRunOpt = False, verbose: VerboseOpt = False) -> None:
     """Normalise and dedupe candidates into canonical company rows."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("resolve")
+    seg, settings = _setup(segment, verbose=verbose)
+    with db.connect(settings.db_path) as conn:
+        report = resolve_mod.resolve(conn, seg, dry_run=dry_run)
+
+    print(f"candidates seen     {report.candidates_seen}")
+    print(f"companies created   {report.companies_created}")
+    print(f"merged into existing {report.merged_into_existing}")
+    print(f"rejected            {report.rejected}")
+    print(f"flagged as possible duplicates {report.flagged_duplicate}")
 
 
 @app.command()
@@ -228,8 +266,19 @@ def classify(segment: SegmentOpt, dry_run: DryRunOpt = False, verbose: VerboseOp
 @app.command()
 def geocode(segment: SegmentOpt, dry_run: DryRunOpt = False, verbose: VerboseOpt = False) -> None:
     """Turn addresses into coordinates, cache-first."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("geocode")
+    seg, settings = _setup(segment, verbose=verbose)
+    try:
+        with db.connect(settings.db_path) as conn:
+            report = geocode_mod.geocode(conn, seg, settings, dry_run=dry_run)
+    except ConfigError as exc:
+        _die(str(exc))
+        return
+
+    print(f"considered      {report.considered}")
+    print(f"geocoded        {report.geocoded}")
+    print(f"from cache      {report.from_cache}")
+    print(f"no address yet  {report.skipped_no_address}")
+    print(f"failed          {report.failed}")
 
 
 @app.command()

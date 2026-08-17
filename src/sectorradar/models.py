@@ -72,8 +72,12 @@ class Candidate(Frozen):
     raw_url: str | None = None
     source_detail: str | None = None
     discovered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Location a source already knows. A hand-curated seed list carries it; most
+    # other sources do not, and it is filled in later from the company's site.
+    raw_city: str | None = None
+    raw_canton: str | None = None
 
-    @field_validator("raw_name", "raw_url", mode="before")
+    @field_validator("raw_name", "raw_url", "raw_city", "raw_canton", mode="before")
     @classmethod
     def _blank_to_none(cls, v: object) -> object:
         """Sources emit "" as often as they emit null; treat them alike."""

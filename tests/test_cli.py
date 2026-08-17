@@ -16,19 +16,21 @@ from sectorradar.cli import EXIT_FAILURE, EXIT_OK, EXIT_USAGE, app
 
 runner = CliRunner()
 
-# Every stage that is declared but not yet implemented.
+# Stages that are declared but whose phase has not landed yet.
 STUB_STAGES = [
-    "discover",
-    "resolve",
     "fetch",
     "extract",
     "classify",
-    "geocode",
     "run",
     "stats",
     "snapshot",
     "export",
 ]
+
+# Stages that do real work and therefore need a database.
+IMPLEMENTED_STAGES = ["discover", "resolve", "geocode"]
+
+ALL_STAGES = [*STUB_STAGES, *IMPLEMENTED_STAGES]
 
 
 @pytest.fixture(autouse=True)
@@ -47,7 +49,7 @@ def test_help_lists_every_pipeline_stage() -> None:
     """The surface is fixed early so nothing downstream has to guess it."""
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == EXIT_OK
-    for stage in [*STUB_STAGES, "init", "doctor"]:
+    for stage in [*ALL_STAGES, "init", "doctor"]:
         assert stage in result.output
 
 
@@ -89,9 +91,61 @@ def test_doctor_flags_a_missing_contact_address(monkeypatch: pytest.MonkeyPatch)
 
 @pytest.mark.parametrize("stage", STUB_STAGES)
 def test_unimplemented_stages_exit_2(stage: str) -> None:
+    runner.invoke(app, ["init"])
     result = runner.invoke(app, [stage, "--segment", "agentic-ai-ch"])
     assert result.exit_code == EXIT_USAGE, f"{stage} should exit {EXIT_USAGE}"
     assert "not implemented" in result.output
+
+
+@pytest.mark.parametrize("stage", ALL_STAGES)
+def test_every_stage_refuses_to_run_without_a_database(stage: str) -> None:
+    """Exit 1 with the fix, rather than a traceback from a missing file."""
+    result = runner.invoke(app, [stage, "--segment", "agentic-ai-ch"])
+    assert result.exit_code == EXIT_FAILURE
+    assert "sectorradar init" in result.output
+
+
+def test_discover_and_resolve_run_end_to_end(tmp_path: Path) -> None:
+    """The seeds -> resolve spine, on a throwaway segment."""
+    segments = tmp_path / "segments"
+    segments.mkdir()
+    (segments / "tiny.yaml").write_text(
+        """
+slug: tiny
+name: Tiny test segment
+geo:
+  country: CH
+inclusion: Include a company if it sells widgets as a named service on its site.
+tiers:
+  1: primary
+sources:
+  seeds:
+    enabled: true
+    urls:
+      - url: https://example.ch
+        name: Example AG
+        city: Zurich
+        canton: ZH
+      - https://other.ch
+""",
+        encoding="utf-8",
+    )
+
+    runner.invoke(app, ["init"])
+    import os
+
+    cwd = Path.cwd()
+    os.chdir(tmp_path)
+    try:
+        found = runner.invoke(app, ["discover", "--segment", "tiny"])
+        resolved = runner.invoke(app, ["resolve", "--segment", "tiny"])
+    finally:
+        os.chdir(cwd)
+
+    assert found.exit_code == EXIT_OK, found.output
+    assert "2 new" in found.output or "2 candidates" in found.output
+    assert resolved.exit_code == EXIT_OK, resolved.output
+    assert "companies created   2" in resolved.output
 
 
 def test_an_unknown_segment_fails_readably_without_a_traceback() -> None:

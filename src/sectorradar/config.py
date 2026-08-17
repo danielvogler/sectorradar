@@ -100,6 +100,18 @@ class Segment(BaseModel):
     def gold_domains(self) -> set[str]:
         return {e.domain.lower().removeprefix("www.") for e in self.gold_set}
 
+    def to_yaml(self) -> str:
+        """Serialise back to YAML, for recording what a run actually used.
+
+        The stored copy is the validated model rather than the file's bytes, so
+        it reflects defaults that were applied rather than only what was typed.
+        """
+        return yaml.safe_dump(
+            self.model_dump(mode="json", exclude_none=False),
+            sort_keys=False,
+            allow_unicode=True,
+        )
+
 
 def segment_path(slug: str, *, base: Path | None = None) -> Path:
     return (base or SEGMENTS_DIR) / f"{slug}.yaml"
