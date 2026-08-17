@@ -241,3 +241,59 @@ def test_dry_run_writes_nothing(conn: sqlite3.Connection, settings: Settings) ->
     assert report.classified == 1
     row = conn.execute("SELECT tier FROM membership WHERE company_id = ?", (company_id,)).fetchone()
     assert row["tier"] is None
+
+
+# --- the geography gate -----------------------------------------------------
+
+
+def test_a_city_that_did_not_geocode_fails_geography() -> None:
+    """Geocoding only accepts Swiss results, so a city with no coordinates is foreign."""
+    assert classify.fails_geography("Toronto", None, geocoded_any=True)
+
+
+def test_a_geocoded_city_passes() -> None:
+    assert not classify.fails_geography("Zürich", 47.37, geocoded_any=True)
+
+
+def test_no_recorded_city_is_not_a_geography_failure() -> None:
+    """Absent evidence goes to the model to weigh, not to an automatic rejection."""
+    assert not classify.fails_geography(None, None, geocoded_any=True)
+
+
+def test_the_gate_is_inert_before_geocoding_has_run() -> None:
+    """Without geocoding every company has a null lat and would look foreign."""
+    assert not classify.fails_geography("Toronto", None, geocoded_any=False)
+
+
+def test_an_out_of_area_company_is_rejected_without_an_llm_call(
+    conn: sqlite3.Connection, settings: Settings
+) -> None:
+    """The classifier was told to check geography and tiered Toronto anyway.
+
+    A rule that can be evaluated should not be left to persuasion — and settling
+    it in code also saves the call.
+    """
+    db.upsert_segment(conn, SEGMENT.slug, SEGMENT.name, "slug: test-seg")
+    # One properly located company, so the gate knows geocoding has run.
+    swiss_id = db.upsert_company(
+        conn, domain="swiss.ch", canonical_name="Swiss", city="Zürich", lat=47.37, lon=8.54
+    )
+    db.upsert_membership(conn, segment_slug=SEGMENT.slug, company_id=swiss_id)
+    foreign_id = db.upsert_company(
+        conn, domain="foreign.com", canonical_name="Foreign", city="Toronto"
+    )
+    db.upsert_membership(conn, segment_slug=SEGMENT.slug, company_id=foreign_id)
+    conn.commit()
+
+    llm = FakeLLM(_decision(tier=1), _decision(tier=1))
+    report = classify.classify(conn, SEGMENT, settings, llm)
+
+    assert report.out_of_area == 1
+    assert llm.calls == 1, "the foreign company should not have cost a call"
+
+    row = conn.execute(
+        "SELECT tier, tier_rationale FROM membership WHERE company_id = ?", (foreign_id,)
+    ).fetchone()
+    assert row["tier"] is None
+    assert "Toronto" in row["tier_rationale"]
+    assert "geography" in row["tier_rationale"].lower()

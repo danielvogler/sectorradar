@@ -310,6 +310,7 @@ def classify(segment: SegmentOpt, dry_run: DryRunOpt = False, verbose: VerboseOp
     print(f"considered        {report.considered}")
     print(f"classified        {report.classified}")
     print(f"undecided         {report.undecided}")
+    print(f"out of area       {report.out_of_area}")
     print(f"failed            {report.failed}")
     print(f"skipped, reviewed {report.skipped_reviewed}")
     print(f"by tier           {report.by_tier}")
@@ -373,13 +374,16 @@ def run(segment: SegmentOpt, dry_run: DryRunOpt = False, verbose: VerboseOpt = F
                 f"({extracted.hallucination_rate:.0%} unsupported)"
             )
 
-            print("== classify ==")
-            classified = classify_mod.classify(conn, seg, settings, client, dry_run=dry_run)
-            print(f"   {classified.by_tier}")
-
+            # Geocode BEFORE classify: the geography gate in classify uses the
+            # geocoder's verdict as its evidence, and the geocoder only accepts
+            # results inside the segment's country.
             print("== geocode ==")
             located = geocode_mod.geocode(conn, seg, settings, dry_run=dry_run)
             print(f"   {located.geocoded} geocoded")
+
+            print("== classify ==")
+            classified = classify_mod.classify(conn, seg, settings, client, dry_run=dry_run)
+            print(f"   {classified.by_tier}  ({classified.out_of_area} excluded on geography)")
 
             cost = extracted.usage.cost_usd + classified.usage.cost_usd
             print(f"\nLLM cost this run: USD {cost:.4f}")

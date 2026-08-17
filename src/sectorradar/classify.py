@@ -33,6 +33,7 @@ class ClassifyReport:
     considered: int = 0
     classified: int = 0
     undecided: int = 0
+    out_of_area: int = 0
     failed: int = 0
     skipped_reviewed: int = 0
     by_tier: dict[int, int] = field(default_factory=dict)
@@ -95,6 +96,29 @@ def build_prompt(
     )
 
 
+def fails_geography(city: str | None, lat: float | None, geocoded_any: bool) -> bool:
+    """Whether recorded location contradicts the segment's country.
+
+    A deterministic gate, deliberately not left to the prompt. The classifier is
+    *told* to check geography first and still returned tier 1 for companies
+    whose own recorded city was Toronto, Calgary, Kochi, Austin and Dortmund —
+    it had the evidence in front of it and tiered them anyway. Persuasion is
+    the wrong instrument for a rule that can be evaluated.
+
+    The test uses the geocoder's own verdict. Geocoding runs before
+    classification and only accepts results inside the country (swisstopo is
+    Swiss-only; the Nominatim fallback is pinned with ``countrycodes``). So a
+    company that has a city but no coordinates is one whose city was looked for
+    in Switzerland and not found — which is exactly the question being asked.
+
+    ``geocoded_any`` guards against the case where geocoding has not run at all,
+    where every company would look foreign.
+    """
+    if not geocoded_any:
+        return False
+    return bool(city) and lat is None
+
+
 def _to_classify(conn: sqlite3.Connection, segment: Segment, *, force: bool) -> list[sqlite3.Row]:
     """Companies eligible for a tiering decision.
 
@@ -104,7 +128,8 @@ def _to_classify(conn: sqlite3.Connection, segment: Segment, *, force: bool) -> 
     """
     clause = "" if force else "AND COALESCE(m.review_state, 'pending') = 'pending'"
     sql = f"""
-        SELECT c.id, c.domain, c.one_liner, c.city, c.canton, c.country, m.review_state
+        SELECT c.id, c.domain, c.one_liner, c.city, c.canton, c.country,
+               c.lat, m.review_state
           FROM company c
           JOIN membership m ON m.company_id = c.id
          WHERE m.segment_slug = ?
@@ -137,9 +162,41 @@ def classify(
     if not force:
         report.skipped_reviewed = int(reviewed["n"])
 
+    # Has geocoding run at all? Without it every company looks foreign.
+    geocoded_any = bool(
+        conn.execute(
+            """
+            SELECT 1 FROM company c JOIN membership m ON m.company_id = c.id
+             WHERE m.segment_slug = ? AND c.lat IS NOT NULL LIMIT 1
+            """,
+            (segment.slug,),
+        ).fetchone()
+    )
+
     for row in _to_classify(conn, segment, force=force):
         company_id, domain = int(row["id"]), str(row["domain"])
         report.considered += 1
+
+        if fails_geography(row["city"], row["lat"], geocoded_any):
+            # Settled without spending a call: the company's own recorded city
+            # could not be found in the segment's country.
+            report.out_of_area += 1
+            if not dry_run:
+                db.upsert_membership(
+                    conn,
+                    segment_slug=segment.slug,
+                    company_id=company_id,
+                    tier=None,
+                    tier_rationale=(
+                        f"Excluded on geography: recorded location '{row['city']}' is not in "
+                        f"{segment.geo.country}. The segment's inclusion rule requires a "
+                        "presence there."
+                    ),
+                    relevance=0.0,
+                )
+                conn.commit()
+            log.info("classify.out_of_area", domain=domain, city=row["city"])
+            continue
 
         offerings = conn.execute(
             "SELECT label, evidence_url, evidence_quote FROM offering WHERE company_id = ?",
@@ -218,6 +275,7 @@ def classify(
         considered=report.considered,
         classified=report.classified,
         undecided=report.undecided,
+        out_of_area=report.out_of_area,
         by_tier=report.by_tier,
         cost_usd=round(report.usage.cost_usd, 4),
     )
