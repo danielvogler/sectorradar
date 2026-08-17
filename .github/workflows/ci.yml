@@ -1,0 +1,90 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the project
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check --output-format=github .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Typecheck
+        run: uv run mypy
+
+      - name: Test
+        # Network- and money-spending tests are deselected: CI has no API keys
+        # and must never depend on a third party being up.
+        run: >-
+          uv run pytest -m "not network and not llm"
+          --cov --cov-report=term-missing --cov-fail-under=80
+
+  secrets:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history: a secret committed once and reverted is still leaked.
+          fetch-depth: 0
+
+      - name: Scan history for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  hygiene:
+    name: repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: No collected data is tracked
+        run: |
+          if [ -n "$(git ls-files data/)" ]; then
+            echo "::error::files under data/ are tracked by git — see DATA.md"
+            git ls-files data/
+            exit 1
+          fi
+
+      - name: No AI co-author trailers in history
+        run: |
+          if git log --format='%B' | grep -i 'co-authored-by'; then
+            echo "::error::an AI Co-Authored-By trailer is present in the history"
+            exit 1
+          fi
