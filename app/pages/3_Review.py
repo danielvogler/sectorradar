@@ -90,6 +90,14 @@ def render_company(segment: str, row: dict[str, object], reviewer: str) -> None:
 
 def main() -> None:
     st.title("👀 Review")
+    st.caption(
+        "Optional. Every tier on this dashboard is a language model's opinion; "
+        "this page is where you turn one into a decision. Accepting or rejecting "
+        "a company pins it — a later pipeline run will not silently re-tier it — "
+        "and pushes it to the top or bottom of the Overview ranking. "
+        "You do not have to work through the queue: the Overview is ranked by "
+        "certainty so you can just read the top of it."
+    )
 
     if not queries.database_exists():
         filters.no_database_panel()

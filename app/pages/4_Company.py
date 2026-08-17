@@ -15,7 +15,11 @@ st.set_page_config(page_title="Company · sectorradar", page_icon="🏢", layout
 
 
 def main() -> None:
-    st.title("🏢 Company")
+    st.title("🏢 Company detail")
+    st.caption(
+        "Everything recorded about one company, and where each claim came from. "
+        "Pick one below, or arrive here from a link on another page."
+    )
 
     if not queries.database_exists():
         filters.no_database_panel()
@@ -32,15 +36,32 @@ def main() -> None:
         return
 
     labels = {int(r["id"]): f"{r['canonical_name']} ({r['domain']})" for r in rows}
-    preselected = st.query_params.get("company")
     ids = list(labels)
-    index = (
-        ids.index(int(preselected))
-        if preselected and preselected.isdigit() and int(preselected) in ids
-        else 0
+
+    # No default selection. Opening on whichever company happens to be first
+    # makes the page look like it is *about* that company, which is confusing
+    # and gives one arbitrary firm a whole screen of the dashboard.
+    preselected = st.query_params.get("company")
+    chosen = int(preselected) if preselected and preselected.isdigit() else None
+    if chosen not in ids:
+        chosen = None
+
+    company_id = st.selectbox(
+        "Company",
+        [None, *ids],
+        index=0 if chosen is None else ids.index(chosen) + 1,
+        format_func=lambda i: "— pick a company —" if i is None else labels[i],
     )
 
-    company_id = st.selectbox("Company", ids, index=index, format_func=lambda i: labels[i])
+    if company_id is None:
+        st.query_params.pop("company", None)
+        st.info(
+            "Pick a company above to see its profile, the offerings extracted from "
+            "its site, and the source URL behind every claim.",
+            icon="👆",
+        )
+        return
+
     st.query_params["company"] = str(company_id)
 
     record = queries.company(int(company_id))

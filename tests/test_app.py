@@ -73,7 +73,7 @@ def test_home_shows_counts_for_a_populated_segment(
 
     assert not app.exception, f"Home.py raised: {app.exception}"
     values = [m.value for m in app.metric]
-    assert values[0] == "4"  # total
-    assert values[1] == "2"  # tier 1
-    assert values[2] == "1"  # tier 2
-    assert values[3] == "4"  # pending review
+    assert values[0] == "4", "total companies"
+    assert values[1] == "2", "tier 1"
+    assert values[2] == "1", "tier 2"
+    assert values[3] == "1", "wider pool — the single tier 3 company"

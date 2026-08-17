@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pydeck as pdk
 import streamlit as st
+from pydeck.types import String
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -15,25 +16,33 @@ from lib import filters, queries
 st.set_page_config(page_title="Map · sectorradar", page_icon="🗺️", layout="wide")
 
 # Roughly the centre of Switzerland, zoomed to fit the country.
-SWITZERLAND = pdk.ViewState(latitude=46.80, longitude=8.23, zoom=6.9)
+SWITZERLAND = pdk.ViewState(latitude=46.82, longitude=8.23, zoom=7.0)
+
+#: A light Carto basemap, which needs no API token. Without a basemap
+#: (`map_style=None`) the canvas is a flat grey rectangle, so the markers float
+#: with no coastline, lakes or city names to place them against — which makes
+#: the map unreadable however correct the coordinates are.
+BASEMAP = "light"
 
 
 def radius_for(headcount: object) -> float:
     """Marker size in *pixels*, by headcount, on a gentle curve.
 
     Pixels, not metres. ScatterplotLayer measures radius in metres by default,
-    which means a marker covers a fixed patch of ground and grows on screen as
-    you zoom in — so two companies in the same city stay merged into one blob
-    however far you zoom, which is precisely when you want them to separate.
-    In pixels the marker is a fixed screen size and zooming pulls them apart.
+    so a marker covers a fixed patch of ground and swells as you zoom — two
+    companies in one city stay a single blob exactly when you want them apart.
 
-    The curve is gentle because linear scaling makes one 400-person integrator
-    swamp thirty ten-person consultancies, which is the opposite of what this
-    map is for.
+    The units have to be passed as ``pydeck.types.String``. A bare Python
+    string is compiled into a data accessor (``"@@=pixels"``), deck.gl cannot
+    resolve it, and it silently falls back to metres — which is how this looked
+    fixed while still being broken.
+
+    The curve is gentle because linear scaling lets one 400-person integrator
+    swamp thirty ten-person consultancies, the opposite of what this map is for.
     """
     if not headcount:
         return 5.0
-    return round(min(4.0 + 1.6 * (float(headcount) ** 0.5), 22.0), 1)
+    return round(min(4.0 + 1.5 * (float(headcount) ** 0.5), 20.0), 1)
 
 
 def main() -> None:
@@ -48,20 +57,20 @@ def main() -> None:
         st.info("No segments in the database yet.", icon="🌱")
         return
 
-    state = filters.sidebar(segment)
+    state = filters.sidebar(segment, default_include_untiered=False)
     rows = filters.apply(state, require_coordinates=True)
 
     if not rows:
         st.info("No companies match these filters, or none have been geocoded yet.", icon="🔍")
     else:
-        tags_by_company = queries.tags_by_company(segment)
+        tags = queries.tags_by_company(segment)
         points = [
             {
                 "name": r["canonical_name"],
                 "domain": r["domain"],
-                "one_liner": (r["one_liner"] or "")[:160],
+                "where": ", ".join(str(v) for v in (r["city"], r["canton"]) if v) or "—",
                 "tier": f"Tier {r['tier']}" if r["tier"] else "unclassified",
-                "does": ", ".join(tags_by_company.get(int(r["id"]), [])[:5]) or "—",
+                "does": ", ".join(tags.get(int(r["id"]), [])[:4]) or "—",
                 "lat": r["lat"],
                 "lon": r["lon"],
                 "colour": filters.colour_for(r["tier"]),
@@ -72,7 +81,7 @@ def main() -> None:
 
         st.pydeck_chart(
             pdk.Deck(
-                map_style=None,
+                map_style=BASEMAP,
                 initial_view_state=SWITZERLAND,
                 layers=[
                     pdk.Layer(
@@ -81,29 +90,34 @@ def main() -> None:
                         get_position="[lon, lat]",
                         get_fill_color="colour",
                         get_radius="radius",
-                        # Radius is a screen measurement, so markers separate as
-                        # you zoom instead of staying a single blob per city.
-                        radius_units="pixels",
+                        # Literal, not an accessor — see radius_for().
+                        radius_units=String("pixels"),
+                        radius_min_pixels=4,
+                        radius_max_pixels=24,
                         stroked=True,
-                        get_line_color=[255, 255, 255, 180],
+                        get_line_color=[255, 255, 255, 220],
                         line_width_min_pixels=1,
                         pickable=True,
-                        opacity=0.75,
                     )
                 ],
-                tooltip={"text": "{name} — {tier}\n{domain}\n{does}\n{one_liner}"},
+                tooltip={"text": "{name} — {tier}\n{where}\n{does}\n{domain}"},
             )
         )
-        st.caption(
-            f"{len(points)} companies shown. Colour is tier, size is headcount estimate. "
-            "Several companies often share a city — zoom in to separate them."
-        )
 
-    # Rows without coordinates are listed rather than dropped: a map that
-    # silently omits a third of the market is worse than no map.
+        legend = " · ".join(
+            f":{c}[●] Tier {t}" for t, c in ((1, "red"), (2, "orange"), (3, "blue"), (4, "grey"))
+        )
+        st.caption(f"{len(points)} companies. {legend}. Marker size is headcount estimate.")
+        st.caption("Several companies share each city — zoom in and they separate.")
+
     missing = queries.without_coordinates(segment)
     if missing:
         with st.expander(f"⚠️ {len(missing)} companies have no coordinates and are not on the map"):
+            st.caption(
+                "Their site gave no address, or the address could not be placed in "
+                "Switzerland. They are listed rather than dropped, so the map is not "
+                "quietly missing a third of the market."
+            )
             st.dataframe(
                 missing,
                 width="stretch",
