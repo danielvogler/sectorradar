@@ -104,3 +104,43 @@ def test_canton_name_gives_something_geocodable() -> None:
 def test_canton_name_refuses_a_non_code() -> None:
     assert swiss.canton_name("Zurich") is None
     assert swiss.canton_name(None) is None
+
+
+# --- city exonyms -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # Eight companies recorded in "Geneva" were excluded from the segment
+        # as foreign, because the geocoder answers to "Genève".
+        ("Geneva", "Genève"),
+        ("Genf", "Genève"),
+        ("Ginevra", "Genève"),
+        ("Zurich", "Zürich"),
+        ("Zuerich", "Zürich"),
+        ("Lucerne", "Luzern"),
+        ("Berne", "Bern"),
+        ("Basle", "Basel"),
+        ("Saint Gall", "St. Gallen"),
+        ("Neuchatel", "Neuchâtel"),
+        ("Coire", "Chur"),
+    ],
+)
+def test_city_exonyms_fold_to_the_local_spelling(value: str, expected: str) -> None:
+    assert swiss.canonical_city(value) == expected
+
+
+def test_an_unknown_town_is_left_alone() -> None:
+    """Most Swiss towns have one name and are already spelled correctly."""
+    assert swiss.canonical_city("Wädenswil") == "Wädenswil"
+    assert swiss.canonical_city("Rebstein") == "Rebstein"
+
+
+def test_city_whitespace_is_collapsed() -> None:
+    assert swiss.canonical_city("  Zug   ") == "Zug"
+
+
+def test_no_city_is_none() -> None:
+    assert swiss.canonical_city(None) is None
+    assert swiss.canonical_city("  ") is None

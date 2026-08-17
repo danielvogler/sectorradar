@@ -289,7 +289,7 @@ def extract(
             legal_name=profile.legal_name,
             headcount_est=profile.headcount_estimate,
             founded_year=profile.founded_year,
-            city=profile.city,
+            city=swiss.canonical_city(profile.city),
             # Folded to a two-letter code, or dropped. A model answers this
             # field with whatever the site says — four languages, two
             # registers, and occasionally somewhere that is not Swiss at all.
@@ -301,7 +301,7 @@ def extract(
         for name, value in (
             ("headcount_est", profile.headcount_estimate),
             ("founded_year", profile.founded_year),
-            ("city", profile.city),
+            ("city", swiss.canonical_city(profile.city)),
             ("canton", swiss.canton_code(profile.canton)),
         ):
             if value is not None:

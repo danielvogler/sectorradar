@@ -378,7 +378,7 @@ def resolve(conn: sqlite3.Connection, segment: Segment, *, dry_run: bool = False
                 conn,
                 domain=domain,
                 canonical_name=canonical_name_for(name, domain),
-                city=row["raw_city"],
+                city=swiss.canonical_city(row["raw_city"]),
                 canton=swiss.canton_code(row["raw_canton"]),
             )
         else:
@@ -387,7 +387,7 @@ def resolve(conn: sqlite3.Connection, segment: Segment, *, dry_run: bool = False
                 conn,
                 domain=domain,
                 canonical_name=canonical_name_for(name, domain),
-                city=row["raw_city"],
+                city=swiss.canonical_city(row["raw_city"]),
                 canton=swiss.canton_code(row["raw_canton"]),
             )
             by_domain[domain] = company_id

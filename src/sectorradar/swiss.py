@@ -172,3 +172,61 @@ def canton_name(code: str | None) -> str | None:
 
 def is_canton(value: str | None) -> bool:
     return canton_code(value) is not None
+
+
+#: English, French, German and Italian names for Swiss cities, folded to the
+#: spelling swisstopo and the Swiss postal service actually use.
+#:
+#: The same problem as the cantons, and it bit in the same way: eight companies
+#: recorded as being in "Geneva" were excluded from the segment as foreign,
+#: because the geocoder answers to "Genève" and a plain substring check does
+#: not connect the two.
+CITY_EXONYMS: dict[str, str] = {
+    "geneva": "Genève",
+    "genf": "Genève",
+    "ginevra": "Genève",
+    "zurich": "Zürich",
+    "zuerich": "Zürich",
+    "zurigo": "Zürich",
+    "lucerne": "Luzern",
+    "lucerna": "Luzern",
+    "berne": "Bern",
+    "berna": "Bern",
+    "basle": "Basel",
+    "bale": "Basel",
+    "basilea": "Basel",
+    "st gallen": "St. Gallen",
+    "st. gallen": "St. Gallen",
+    "sankt gallen": "St. Gallen",
+    "saint gall": "St. Gallen",
+    "san gallo": "St. Gallen",
+    "neuchatel": "Neuchâtel",
+    "neuenburg": "Neuchâtel",
+    "biel": "Biel/Bienne",
+    "bienne": "Biel/Bienne",
+    "sion": "Sion",
+    "sitten": "Sion",
+    "coire": "Chur",
+    "coira": "Chur",
+    "fribourg": "Fribourg",
+    "freiburg": "Fribourg",
+    "soleure": "Solothurn",
+    "schaffhouse": "Schaffhausen",
+    "thoune": "Thun",
+    "morat": "Murten",
+    "locarno": "Locarno",
+    "lugano": "Lugano",
+}
+
+
+def canonical_city(value: str | None) -> str | None:
+    """The spelling Swiss services answer to, or the input unchanged.
+
+    Unlike :func:`canton_code` this does not refuse unknown values — most Swiss
+    towns are not in the table above and are already spelled correctly. It only
+    fixes the handful of places that have widely-used foreign-language names.
+    """
+    if not value or not value.strip():
+        return None
+    cleaned = " ".join(value.strip().split())
+    return CITY_EXONYMS.get(_fold(cleaned), cleaned)
