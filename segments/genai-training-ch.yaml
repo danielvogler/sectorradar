@@ -1,0 +1,109 @@
+---
+# GenAI training and workshop providers in Switzerland.
+#
+# This file is the abstraction test. It was added with ZERO changes to any
+# module under src/ — if a second segment had needed code, the genericity
+# mechanism would be broken and the fix would be the mechanism, not this file.
+#
+# It is a genuinely different segment, not a copy with the nouns changed: the
+# inclusion rule admits training providers and solo consultants that
+# agentic-ai-ch deliberately excludes, and the facets describe how training is
+# delivered rather than what software is built.
+slug: genai-training-ch
+name: GenAI training & workshop providers, Switzerland
+
+geo:
+  country: CH
+  cantons: null
+
+inclusion: >
+  Include an organisation if it offers, as a named service on its own website,
+  training, workshops, courses or enablement programmes about generative AI or
+  large language models, aimed at organisations or professionals.
+  Include dedicated training providers, academies and further-education
+  institutions with a GenAI curriculum.
+  Include consultancies whose training arm is a distinct, named offering.
+  Include individual consultants who trade through a registered company.
+  Exclude companies that only build software and do not teach.
+  Exclude universities' degree programmes — this is about commercial training
+  bought by an employer, not tertiary education.
+  Exclude organisations with no Swiss presence.
+
+tiers:
+  1: "GenAI training and enablement is the primary business"
+  2: "Established training provider or academy with a substantial GenAI curriculum"
+  3: "Consultancy or agency offering GenAI workshops alongside its main business"
+  4: "Occasional workshops, single courses, or a speaker offering GenAI talks"
+
+enrich_tiers: [1, 2, 3]
+
+facets:
+  audience: [executives, managers, developers, marketing, hr, legal, public_sector, general]
+  format: [onsite, online, hybrid, self_paced, bootcamp, keynote, coaching]
+  language: [de, fr, it, en]
+  topic: [prompting, agents, rag, governance, strategy, tooling, ethics, data_literacy]
+
+sources:
+  seeds:
+    enabled: true
+    urls:
+      - url: https://www.digicomp.ch
+        name: Digicomp
+        city: Zürich
+        canton: ZH
+        note: established Swiss IT training provider with a GenAI curriculum
+      - url: https://www.akademie-ki.ch
+        name: Akademie für KI
+        city: Zürich
+        canton: ZH
+      - url: https://schweizer-ki-akademie.ch
+        name: Schweizer KI-Akademie
+        canton: ZH
+      - url: https://www.swiss-ai-experts.ch
+        name: Swiss AI Experts
+      - url: https://seox.ch
+        name: SEOX
+        note: GEO and AI workshops for marketing teams
+      - url: https://gipfel-werk.ch
+        name: Gipfelwerk
+        note: KI use-case workshops
+
+  websearch:
+    enabled: true
+    queries:
+      - "GenAI Schulung Unternehmen Schweiz Anbieter"
+      - "KI Weiterbildung Firmen Schweiz Kurs"
+      - "ChatGPT Schulung Mitarbeiter Schweiz"
+      - "Prompt Engineering Kurs Schweiz Unternehmen"
+      - "KI Workshop Geschäftsleitung Schweiz"
+      - "formation intelligence artificielle générative entreprises Suisse"
+      - "cours ChatGPT entreprises Suisse"
+      - "corso intelligenza artificiale generativa aziende Svizzera"
+      - "generative AI training provider Switzerland companies"
+      - "AI literacy programme Swiss employers"
+      - "LLM training course Switzerland corporate"
+      - "AI keynote speaker Switzerland companies"
+
+  lindas:
+    enabled: true
+    purpose_terms:
+      - "Aus- und Weiterbildung"
+      - "Schulung"
+    note: "Candidates only. The register has no website field, so these never resolve."
+
+# BOOTSTRAPPED BY AGENT — owner must review.
+# Deliberately small. This segment exists to prove the abstraction holds, and a
+# padded gold set would make its recall figure look meaningful when it is not.
+gold_set:
+  - domain: digicomp.ch
+    expected_tier: 2
+  - domain: akademie-ki.ch
+    expected_tier: 1
+  - domain: schweizer-ki-akademie.ch
+    expected_tier: 1
+  - domain: swiss-ai-experts.ch
+    expected_tier: 1
+  - domain: seox.ch
+    expected_tier: 3
+  - domain: gipfel-werk.ch
+    expected_tier: 3

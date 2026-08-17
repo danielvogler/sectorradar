@@ -237,6 +237,14 @@ def fetch(
         for row in rows:
             report.companies += 1
             _fetch_one(conn, client, politeness, row, raw_dir, report, force=force, dry_run=dry_run)
+            # Commit per company rather than once at the end. A crawl of 150
+            # sites at one request per second runs for half an hour, and a
+            # single commit at the end means an interrupt discards all of it.
+            # Worse, the HTML already written to data/raw/ would be orphaned:
+            # the `page` rows are what link a content hash back to a company,
+            # so without them a restart re-fetches everything it just fetched.
+            if not dry_run:
+                conn.commit()
 
     if dry_run:
         conn.rollback()
