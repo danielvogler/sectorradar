@@ -176,3 +176,63 @@ def test_report_lists_what_was_not_found(conn: sqlite3.Connection) -> None:
     text = stats.format_report(stats.collect(conn, segment))
     assert "missing.ch" in text
     assert "50.0%" in text
+
+
+# --- the honesty of the headline number -------------------------------------
+
+
+def _segment_with_seeds(gold: list[str], seeds: list[str]) -> Segment:
+    return Segment.model_validate(
+        {
+            "slug": "test-seg",
+            "name": "Test",
+            "geo": {"country": "CH"},
+            "inclusion": "Include companies that build LLM agents for clients.",
+            "tiers": {1: "primary"},
+            "sources": {"seeds": {"enabled": True, "urls": [f"https://{d}" for d in seeds]}},
+            "gold_set": [{"domain": d} for d in gold],
+        }
+    )
+
+
+def test_blind_recall_excludes_seeded_entries(conn: sqlite3.Connection) -> None:
+    """A gold entry that was seeded is in the database by definition, not by discovery."""
+    segment = _segment_with_seeds(gold=["a.ch", "b.ch", "c.ch", "d.ch"], seeds=["a.ch", "b.ch"])
+    for domain in ("a.ch", "b.ch", "c.ch"):
+        _company(conn, domain)
+
+    recall = stats.gold_set_recall(conn, segment)
+    assert recall.percent == 75.0, "headline counts everything"
+    assert recall.blind_expected == 2, "only c.ch and d.ch were never seeded"
+    assert recall.blind_found == 1
+    assert recall.blind_percent == 50.0
+
+
+def test_a_gold_set_drawn_from_the_seed_list_is_flagged(conn: sqlite3.Connection) -> None:
+    """A near-100% headline built from seeds must announce itself as meaningless."""
+    segment = _segment_with_seeds(gold=["a.ch", "b.ch", "c.ch"], seeds=["a.ch", "b.ch", "c.ch"])
+    for domain in ("a.ch", "b.ch", "c.ch"):
+        _company(conn, domain)
+
+    recall = stats.gold_set_recall(conn, segment)
+    assert recall.percent == 100.0
+    assert recall.is_mostly_seeded
+
+    text = stats.format_report(stats.collect(conn, segment))
+    assert "largely measures the seed list" in text
+
+
+def test_an_independent_gold_set_is_not_flagged(conn: sqlite3.Connection) -> None:
+    segment = _segment_with_seeds(gold=["a.ch", "b.ch", "c.ch"], seeds=["z.ch"])
+    _company(conn, "a.ch")
+    recall = stats.gold_set_recall(conn, segment)
+    assert not recall.is_mostly_seeded
+
+
+def test_blind_percent_is_zero_when_every_gold_entry_was_seeded(
+    conn: sqlite3.Connection,
+) -> None:
+    """No blind entries means no measurable coverage, not perfect coverage."""
+    segment = _segment_with_seeds(gold=["a.ch"], seeds=["a.ch"])
+    _company(conn, "a.ch")
+    assert stats.gold_set_recall(conn, segment).blind_percent == 0.0

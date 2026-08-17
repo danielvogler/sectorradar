@@ -25,11 +25,28 @@ log = get_logger(__name__)
 
 @dataclass(frozen=True)
 class Recall:
-    """How much of the known-good set the pipeline found by itself."""
+    """How much of the known-good set the pipeline found by itself.
+
+    Two figures, because the headline one is easy to fool.
+
+    ``percent`` is recall over the whole gold set, which is what the build
+    specification asks for. It has a serious weakness: any gold entry that is
+    also in ``seeds.urls`` is in the database *by definition*, because seeding
+    put it there. A gold set assembled from the seed list therefore scores near
+    100% no matter how bad discovery is.
+
+    ``blind_percent`` is recall over gold entries that were never seeded. It is
+    the number worth tuning prompts and queries against, and the one to quote
+    when someone asks how good coverage is.
+    """
 
     expected: int
     found: int
     missing: tuple[str, ...] = ()
+    blind_expected: int = 0
+    blind_found: int = 0
+    #: Gold entries an automated source reached without being handed the domain.
+    unseeded_sources_found: int = 0
 
     @property
     def ratio(self) -> float:
@@ -38,6 +55,19 @@ class Recall:
     @property
     def percent(self) -> float:
         return round(self.ratio * 100, 1)
+
+    @property
+    def blind_percent(self) -> float:
+        if not self.blind_expected:
+            return 0.0
+        return round(self.blind_found / self.blind_expected * 100, 1)
+
+    @property
+    def is_mostly_seeded(self) -> bool:
+        """Whether the headline figure is largely measuring the seed list."""
+        if not self.expected:
+            return False
+        return (self.expected - self.blind_expected) / self.expected > 0.5
 
 
 @dataclass(frozen=True)
@@ -103,11 +133,41 @@ def gold_set_recall(conn: sqlite3.Connection, segment: Segment) -> Recall:
     }
 
     found = expected & stored
+
+    # Gold entries that seeding did not simply hand to the pipeline.
+    seeded: set[str] = set()
+    for entry in getattr(segment.source("seeds"), "urls", None) or []:
+        raw = entry.get("url") if isinstance(entry, dict) else entry
+        domain = normalise_domain(str(raw)) if raw else None
+        if domain:
+            seeded.add(domain)
+    blind = expected - seeded
+
     return Recall(
         expected=len(expected),
         found=len(found),
         missing=tuple(sorted(expected - stored)),
+        blind_expected=len(blind),
+        blind_found=len(blind & stored),
+        unseeded_sources_found=len(_reached_without_seeding(conn, segment, expected)),
     )
+
+
+def _reached_without_seeding(
+    conn: sqlite3.Connection, segment: Segment, expected: set[str]
+) -> set[str]:
+    """Gold domains some source other than ``seeds`` produced a candidate for."""
+    rows = conn.execute(
+        """
+        SELECT DISTINCT c.domain
+          FROM company c
+          JOIN membership m ON m.company_id = c.id
+          JOIN candidate cd ON cd.resolved_to = c.id
+         WHERE m.segment_slug = ? AND cd.source != 'seeds'
+        """,
+        (segment.slug,),
+    ).fetchall()
+    return {str(r["domain"]).lower() for r in rows} & expected
 
 
 def collect(conn: sqlite3.Connection, segment: Segment) -> Stats:
@@ -209,13 +269,23 @@ def format_report(stats: Stats) -> str:
         "",
     ]
 
-    if stats.recall.expected:
+    recall = stats.recall
+    if recall.expected:
+        lines.append(f"gold-set recall    {recall.percent}% ({recall.found}/{recall.expected})")
         lines.append(
-            f"gold-set recall    {stats.recall.percent}% "
-            f"({stats.recall.found}/{stats.recall.expected})"
+            f"  blind recall     {recall.blind_percent}% "
+            f"({recall.blind_found}/{recall.blind_expected}) — gold entries never seeded"
         )
-        if stats.recall.missing:
-            lines.append(f"  not found        {', '.join(stats.recall.missing)}")
+        lines.append(
+            f"  reached unaided  {recall.unseeded_sources_found}/{recall.expected} "
+            "— gold entries an automated source found without being handed the domain"
+        )
+        if recall.is_mostly_seeded:
+            lines.append("  NOTE: most of the gold set is also in seeds.urls, so the headline")
+            lines.append("        figure largely measures the seed list rather than discovery.")
+            lines.append("        Read 'reached unaided' instead.")
+        if recall.missing:
+            lines.append(f"  not found        {', '.join(recall.missing)}")
     else:
         lines.append("gold-set recall    no gold set defined — recall cannot be measured")
 
