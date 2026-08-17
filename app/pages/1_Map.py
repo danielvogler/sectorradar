@@ -106,7 +106,7 @@ def main() -> None:
         with st.expander(f"⚠️ {len(missing)} companies have no coordinates and are not on the map"):
             st.dataframe(
                 missing,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
                     "id": None,

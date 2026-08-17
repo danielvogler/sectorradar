@@ -37,6 +37,25 @@ def test_main_text_drops_navigation_and_scripts() -> None:
     assert "x=1" not in text
 
 
+def test_main_text_keeps_the_footer_because_that_is_where_the_address_is() -> None:
+    """Stripping <footer> looked tidy and silently destroyed the location data.
+
+    Measured on real fetched pages: every page that contained a recognisable
+    Swiss postal address kept it only in the footer, so removing the element
+    lost 100% of them, and 61 of 160 enriched companies had no city as a
+    result. Which canton a company is in — and whether it is in the country at
+    all — is decided by this text.
+    """
+    html = (
+        "<html><body><p>We build agents.</p>"
+        "<footer>Ergon Informatik AG, Merkurstrasse 43, 8032 Zürich</footer>"
+        "</body></html>"
+    )
+    text = fetch.main_text(html)
+    assert "8032 Zürich" in text
+    assert "Merkurstrasse" in text
+
+
 def test_content_sha_ignores_whitespace_churn() -> None:
     """Reflowed markup is not a changed page, and must not trigger re-extraction."""
     assert fetch.content_sha("a  b\n c") == fetch.content_sha("a b c")

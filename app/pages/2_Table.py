@@ -117,7 +117,7 @@ def main() -> None:
 
     st.dataframe(
         [{k: r.get(k) for k in COLUMNS} for r in rows],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "certainty": st.column_config.ProgressColumn(

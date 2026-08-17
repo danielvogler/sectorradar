@@ -141,7 +141,7 @@ def main() -> None:
                 }
                 for source, stats in sorted(by_source.items())
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "yield": st.column_config.ProgressColumn(

@@ -66,17 +66,17 @@ def render_company(segment: str, row: dict[str, object], reviewer: str) -> None:
     )
 
     accept, reject, info = st.columns(3)
-    if accept.button("✅ Accept", key=f"a-{company_id}", use_container_width=True):
+    if accept.button("✅ Accept", key=f"a-{company_id}", width="stretch"):
         queries.save_review(
             segment, company_id, review_state="accepted", reviewer=reviewer, note=note, tier=retier
         )
         st.rerun()
-    if reject.button("❌ Reject", key=f"r-{company_id}", use_container_width=True):
+    if reject.button("❌ Reject", key=f"r-{company_id}", width="stretch"):
         queries.save_review(
             segment, company_id, review_state="rejected", reviewer=reviewer, note=note, tier=retier
         )
         st.rerun()
-    if info.button("❓ Needs info", key=f"n-{company_id}", use_container_width=True):
+    if info.button("❓ Needs info", key=f"n-{company_id}", width="stretch"):
         queries.save_review(
             segment,
             company_id,
@@ -122,7 +122,7 @@ def main() -> None:
                 {"Company": r["canonical_name"], "Domain": r["domain"], "Tier": r["tier"]}
                 for r in pending[1:]
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 

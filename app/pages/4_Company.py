@@ -82,7 +82,7 @@ def main() -> None:
     if facts:
         st.dataframe(
             facts,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "field": "Field",
