@@ -277,3 +277,62 @@ def test_dry_run_writes_no_coordinates(
     assert report.geocoded == 1
     row = conn.execute("SELECT lat FROM company WHERE id = ?", (company_id,)).fetchone()
     assert row["lat"] is None
+
+
+# --- the geocoder answers everything ----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("query", "label"),
+    [
+        # Every one of these is a real swisstopo response to a real query from
+        # the database. Nothing failed; a company in Ontario was plotted in the
+        # Alps, and the map lied with confidence.
+        ("Toronto, Switzerland", "<b>Trient (VS)</b>"),
+        ("Kochi, Switzerland", "<i>Ort</i> <b>Giesch</b> (VS) - Steg-Hohtenn"),
+        ("Dortmund, Switzerland", "International Management Institute Switzerland IMI (LU) - Horw"),
+        ("Calgary, Switzerland", "<b>Chalchegg</b> (AG)"),
+    ],
+)
+def test_an_answer_unrelated_to_the_question_is_a_miss(query: str, label: str) -> None:
+    assert not geocode.match_is_plausible(query, label)
+
+
+@pytest.mark.parametrize(
+    ("query", "label"),
+    [
+        ("Zürich, Switzerland", "<b>Zürich (ZH)</b>"),
+        ("Lausanne, Switzerland", "<b>Lausanne (VD)</b>"),
+        ("Zurich, Switzerland", "<b>Zürich (ZH)</b>"),
+        ("St. Gallen, Switzerland", "<b>St. Gallen (SG)</b>"),
+        ("Bahnhofstrasse 1, 8001, Zürich, Switzerland", "Bahnhofstrasse 1, 8001 Zürich"),
+    ],
+)
+def test_a_real_match_survives(query: str, label: str) -> None:
+    assert geocode.match_is_plausible(query, label)
+
+
+def test_a_missing_label_is_not_a_match() -> None:
+    assert not geocode.match_is_plausible("Zürich, Switzerland", None)
+
+
+def test_a_canton_only_query_is_accepted() -> None:
+    """No specific claim is being made beyond 'somewhere in this canton'."""
+    assert geocode.match_is_plausible("Switzerland", "<b>Anywhere (VS)</b>")
+
+
+def test_an_implausible_swisstopo_result_is_discarded(settings: Settings) -> None:
+    """End to end: the provider answers, and the answer is thrown away."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "geo.admin.ch" in str(request.url):
+            return httpx.Response(
+                200, json={"results": [{"attrs": {"lat": 46.03, "lon": 6.99, "label": "Trient"}}]}
+            )
+        return httpx.Response(200, json=[])
+
+    with _client(handler) as client:
+        point = geocode.geocode_query(
+            client, "Toronto, Switzerland", settings.user_agent(), last_nominatim=[0.0]
+        )
+    assert point is None, "a company in Ontario must not be given Swiss coordinates"

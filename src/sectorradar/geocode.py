@@ -13,8 +13,10 @@ request per second with a real User-Agent.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -128,6 +130,48 @@ def cache_key(query: str) -> str:
     return " ".join(query.lower().split())
 
 
+_TAGS = re.compile(r"<[^>]+>")
+#: Words in a query that identify no place on their own.
+_GENERIC = frozenset({"switzerland", "schweiz", "suisse", "svizzera", "ch"})
+
+
+def _fold(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text.replace("ü", "u").replace("ö", "o"))
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).lower()
+
+
+def match_is_plausible(query: str, label: str | None) -> bool:
+    """Whether a geocoder's answer is actually the place that was asked for.
+
+    swisstopo answers *every* query, however foreign. Measured against the real
+    database: "Toronto, Switzerland" returns Trient in Valais, "Kochi" returns
+    Giesch, "Dortmund" returns an institute in Horw. Nothing fails, so nothing
+    looks wrong — and a company in Ontario ends up plotted in the Alps, which
+    is worse than leaving it off the map entirely because the map then lies
+    with confidence.
+
+    The test: at least one substantial word from the query has to survive into
+    the returned label. Generic words ("Switzerland") and bare numbers do not
+    count, since they match everything.
+    """
+    if not label:
+        return False
+
+    folded_label = _fold(_TAGS.sub(" ", label))
+    terms = [
+        _fold(part)
+        for chunk in query.split(",")
+        for part in chunk.split()
+        if len(part) >= 4 and not part.isdigit() and _fold(part) not in _GENERIC
+    ]
+    if not terms:
+        # Nothing specific was asked for — a canton-only query, say. Accept it;
+        # there is no stronger claim being made than "somewhere in this canton".
+        return True
+
+    return any(term in folded_label for term in terms)
+
+
 def _swisstopo(client: httpx.Client, query: str) -> GeoPoint | None:
     response = client.get(
         SWISSTOPO_URL,
@@ -144,18 +188,45 @@ def _swisstopo(client: httpx.Client, query: str) -> GeoPoint | None:
     lat, lon = attrs.get("lat"), attrs.get("lon")
     if lat is None or lon is None:
         return None
+    label = attrs.get("label")
+    if not match_is_plausible(query, label):
+        # swisstopo answers everything; an answer that has nothing to do with
+        # the question is a miss, not a location.
+        log.debug("geocode.implausible_match", query=query, label=label)
+        return None
+
     return GeoPoint(
         lat=float(lat),
         lon=float(lon),
         provider="swisstopo",
-        matched_address=attrs.get("label"),
+        matched_address=label,
     )
 
 
-def _nominatim(client: httpx.Client, query: str, user_agent: str) -> GeoPoint | None:
+def _nominatim(
+    client: httpx.Client, query: str, user_agent: str, *, settlement_only: bool = False
+) -> GeoPoint | None:
+    """Nominatim, optionally restricted to inhabited places.
+
+    ``settlement_only`` matters more than it looks. Asked for "Toronto,
+    Switzerland" Nominatim happily returns a restaurant called Toronto in
+    Aegerten, and for "Austin" a boutique in Genève — both real Swiss places
+    whose *name* contains the query, so a name check alone accepts them. When
+    the query is a city rather than a street address, restricting to
+    settlements asks the question that was actually meant.
+    """
+    params: dict[str, str | int] = {
+        "q": query,
+        "format": "json",
+        "limit": 1,
+        "countrycodes": "ch",
+    }
+    if settlement_only:
+        params["featureType"] = "settlement"
+
     response = client.get(
         NOMINATIM_URL,
-        params={"q": query, "format": "json", "limit": 1, "countrycodes": "ch"},
+        params=params,
         headers={"User-Agent": user_agent},
         timeout=15.0,
     )
@@ -164,16 +235,26 @@ def _nominatim(client: httpx.Client, query: str, user_agent: str) -> GeoPoint | 
     if not results:
         return None
     first = results[0]
+    label = first.get("display_name")
+    if not match_is_plausible(query, label):
+        log.debug("geocode.implausible_match", query=query, label=label)
+        return None
+
     return GeoPoint(
         lat=float(first["lat"]),
         lon=float(first["lon"]),
         provider="nominatim",
-        matched_address=first.get("display_name"),
+        matched_address=label,
     )
 
 
 def geocode_query(
-    client: httpx.Client, query: str, user_agent: str, *, last_nominatim: list[float]
+    client: httpx.Client,
+    query: str,
+    user_agent: str,
+    *,
+    last_nominatim: list[float],
+    settlement_only: bool = False,
 ) -> GeoPoint | None:
     """Try swisstopo, then Nominatim. Returns None when neither knows the place."""
     try:
@@ -189,7 +270,7 @@ def geocode_query(
     last_nominatim[0] = time.monotonic()
 
     try:
-        return _nominatim(client, query, user_agent)
+        return _nominatim(client, query, user_agent, settlement_only=settlement_only)
     except (httpx.HTTPError, ValueError, KeyError) as exc:
         log.warning("geocode.nominatim_failed", query=query, error=str(exc))
         return None
@@ -246,7 +327,15 @@ def geocode(
                 point = cache.get(key)
                 report.from_cache += 1
             else:
-                point = geocode_query(client, query, user_agent, last_nominatim=last_nominatim)
+                point = geocode_query(
+                    client,
+                    query,
+                    user_agent,
+                    last_nominatim=last_nominatim,
+                    # With no street, this is a place-name lookup and only an
+                    # inhabited place is an acceptable answer.
+                    settlement_only=not (row["street"] and str(row["street"]).strip()),
+                )
                 cache.put(key, point)
 
             if point is None:
