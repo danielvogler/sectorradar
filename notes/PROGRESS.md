@@ -117,6 +117,22 @@ CLI surface, and the AST import-boundary test.
   Markdown, and would rewrite the embedded snippets in the handoff spec. That
   document is a fixed input and stays byte-stable.
 
+- **Dropped the governance boilerplate the spec asks for in §0.5 and §5:**
+  `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`,
+  `.github/PULL_REQUEST_TEMPLATE.md` and `.github/ISSUE_TEMPLATE/`. **Owner's
+  explicit instruction during the build**, not my judgement call: they are
+  ceremony for a single-author repository with no contributors and no PR flow
+  (§0.6 already says to work directly on `main`). `AGENTS.md` covers everything
+  `CONTRIBUTING.md` did. Kept `LICENSE`, `NOTICE`, `DATA.md` and `CHANGELOG.md`,
+  which all do real work — the first two are referenced by
+  `pyproject.license-files`, `DATA.md` by the `no-collected-data` hook, and
+  `CHANGELOG.md` by the phase 7 gate.
+
+  This means the §0.5 line "LICENSE, NOTICE, DATA.md, CONTRIBUTING.md,
+  SECURITY.md, CHANGELOG.md" is **deliberately not fully met**. Worth
+  reinstating a short `SECURITY.md` if the repo is ever actually published, so
+  there is a disclosure address that is not a GitHub issue.
+
 - **`make verify` delegates to `scripts/verify.sh`.** The gate logic needs one
   shell process to count SKIPs across gates; the macOS system make is GNU Make
   3.81, which predates `.ONESHELL`. The Makefile target is a one-liner pointing

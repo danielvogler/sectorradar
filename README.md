@@ -206,8 +206,8 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pyt
 ```
 
 `make check` runs the wider repo health check; `make verify` adds the
-data-dependent acceptance gates. Contributor guidance is in
-[AGENTS.md](./AGENTS.md) and [CONTRIBUTING.md](./CONTRIBUTING.md).
+data-dependent acceptance gates. Conventions, architecture and the rules a
+contributor (human or agent) needs are in [AGENTS.md](./AGENTS.md).
 
 ## Licence
 
