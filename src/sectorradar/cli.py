@@ -22,10 +22,16 @@ from typing import Annotated
 import typer
 
 from sectorradar import __version__, db
+from sectorradar import classify as classify_mod
 from sectorradar import discover as discover_mod
+from sectorradar import export as export_mod
+from sectorradar import extract as extract_mod
+from sectorradar import fetch as fetch_mod
 from sectorradar import geocode as geocode_mod
+from sectorradar import llm as llm_mod
 from sectorradar import logging as slogging
 from sectorradar import resolve as resolve_mod
+from sectorradar import stats as stats_mod
 from sectorradar.config import (
     ConfigError,
     Segment,
@@ -235,8 +241,23 @@ def fetch(
     verbose: VerboseOpt = False,
 ) -> None:
     """Politely crawl each company's own website."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("fetch")
+    seg, settings = _setup(segment, verbose=verbose)
+    try:
+        with db.connect(settings.db_path) as conn:
+            report = fetch_mod.fetch(conn, seg, settings, force=force, dry_run=dry_run)
+    except ConfigError as exc:
+        _die(str(exc))
+        return
+
+    print(f"companies   {report.companies}")
+    print(f"requested   {report.requested}")
+    print(f"stored      {report.stored}")
+    print(f"unchanged   {report.unchanged}")
+    print(f"disallowed  {report.disallowed} (robots.txt)")
+    print(f"blocked     {report.blocked}")
+    print(f"errors      {report.errors}")
+    if report.blocked_hosts:
+        print(f"hosts that blocked us: {', '.join(report.blocked_hosts)}")
 
 
 @app.command()
@@ -252,15 +273,47 @@ def extract(
     verbose: VerboseOpt = False,
 ) -> None:
     """Extract a structured, evidence-carrying profile for each company."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("extract")
+    seg, settings = _setup(segment, verbose=verbose)
+    if model:
+        settings = settings.model_copy(update={"llm_model": model})
+    try:
+        client = llm_mod.get_client(settings)
+        with db.connect(settings.db_path) as conn:
+            report = extract_mod.extract(
+                conn, seg, settings, client, only_changed=only_changed, dry_run=dry_run
+            )
+    except ConfigError as exc:
+        _die(str(exc))
+        return
+
+    print(f"companies          {report.companies}")
+    print(f"profiles           {report.profiles}")
+    print(f"offerings kept     {report.offerings_kept}")
+    print(f"offerings dropped  {report.offerings_dropped}")
+    print(f"hallucination rate {report.hallucination_rate:.1%}")
+    print(f"failed             {report.failed}")
+    print(f"cost               USD {report.usage.cost_usd:.4f}")
 
 
 @app.command()
 def classify(segment: SegmentOpt, dry_run: DryRunOpt = False, verbose: VerboseOpt = False) -> None:
     """Assign a tier, a written rationale and facet tags."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("classify")
+    seg, settings = _setup(segment, verbose=verbose)
+    try:
+        client = llm_mod.get_client(settings)
+        with db.connect(settings.db_path) as conn:
+            report = classify_mod.classify(conn, seg, settings, client, dry_run=dry_run)
+    except ConfigError as exc:
+        _die(str(exc))
+        return
+
+    print(f"considered        {report.considered}")
+    print(f"classified        {report.classified}")
+    print(f"undecided         {report.undecided}")
+    print(f"failed            {report.failed}")
+    print(f"skipped, reviewed {report.skipped_reviewed}")
+    print(f"by tier           {report.by_tier}")
+    print(f"cost              USD {report.usage.cost_usd:.4f}")
 
 
 @app.command()
@@ -283,9 +336,59 @@ def geocode(segment: SegmentOpt, dry_run: DryRunOpt = False, verbose: VerboseOpt
 
 @app.command()
 def run(segment: SegmentOpt, dry_run: DryRunOpt = False, verbose: VerboseOpt = False) -> None:
-    """Run every stage in dependency order."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("run")
+    """Run every stage in dependency order.
+
+    Each stage commits before the next begins, so an interrupted run leaves a
+    consistent database and re-running resumes rather than restarting.
+    """
+    seg, settings = _setup(segment, verbose=verbose)
+
+    try:
+        client = llm_mod.get_client(settings)
+    except ConfigError as exc:
+        _die(str(exc))
+        return
+
+    try:
+        with db.connect(settings.db_path) as conn:
+            print("== discover ==")
+            found = discover_mod.discover(conn, seg, settings, dry_run=dry_run)
+            print(f"   {found.total_found} candidates, {found.total_new} new")
+
+            print("== resolve ==")
+            resolved = resolve_mod.resolve(conn, seg, dry_run=dry_run)
+            print(f"   {resolved.companies_created} new companies, {resolved.rejected} rejected")
+
+            print("== fetch ==")
+            fetched = fetch_mod.fetch(conn, seg, settings, dry_run=dry_run)
+            print(f"   {fetched.stored} pages stored, {fetched.unchanged} unchanged")
+
+            print("== extract ==")
+            extracted = extract_mod.extract(
+                conn, seg, settings, client, only_changed=True, dry_run=dry_run
+            )
+            print(
+                f"   {extracted.offerings_kept} offerings kept, "
+                f"{extracted.offerings_dropped} dropped "
+                f"({extracted.hallucination_rate:.0%} unsupported)"
+            )
+
+            print("== classify ==")
+            classified = classify_mod.classify(conn, seg, settings, client, dry_run=dry_run)
+            print(f"   {classified.by_tier}")
+
+            print("== geocode ==")
+            located = geocode_mod.geocode(conn, seg, settings, dry_run=dry_run)
+            print(f"   {located.geocoded} geocoded")
+
+            cost = extracted.usage.cost_usd + classified.usage.cost_usd
+            print(f"\nLLM cost this run: USD {cost:.4f}")
+    except ConfigError as exc:
+        _die(str(exc))
+        return
+    except KeyboardInterrupt:
+        print("\ninterrupted — the database is consistent, re-run to resume", file=sys.stderr)
+        raise typer.Exit(EXIT_FAILURE) from None
 
 
 @app.command()
@@ -297,15 +400,24 @@ def stats(
     verbose: VerboseOpt = False,
 ) -> None:
     """Report saturation, gold-set recall and cost."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("stats")
+    seg, settings = _setup(segment, verbose=verbose)
+    with db.connect(settings.db_path, read_only=True) as conn:
+        collected = stats_mod.collect(conn, seg)
+
+    if recall_only:
+        # A bare number, so `make verify` can compare it without parsing prose.
+        print(f"{collected.recall.percent}")
+        return
+    print(stats_mod.format_report(collected))
 
 
 @app.command()
 def snapshot(segment: SegmentOpt, verbose: VerboseOpt = False) -> None:
     """Freeze the accepted set so change over time is reconstructable."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("snapshot")
+    seg, settings = _setup(segment, verbose=verbose)
+    with db.connect(settings.db_path) as conn:
+        captured = export_mod.snapshot(conn, seg)
+    print(f"snapshot taken: {captured} companies")
 
 
 @app.command()
@@ -315,8 +427,14 @@ def export(
     verbose: VerboseOpt = False,
 ) -> None:
     """Write the accepted set to a file."""
-    _setup(segment, verbose=verbose)
-    _not_implemented("export")
+    seg, settings = _setup(segment, verbose=verbose)
+    try:
+        with db.connect(settings.db_path, read_only=True) as conn:
+            path = export_mod.export(conn, seg, settings.export_dir, fmt=fmt)
+    except ValueError as exc:
+        _die(str(exc))
+        return
+    print(f"wrote {path}")
 
 
 if __name__ == "__main__":  # pragma: no cover

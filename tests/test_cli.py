@@ -12,25 +12,24 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from sectorradar.cli import EXIT_FAILURE, EXIT_OK, EXIT_USAGE, app
+from sectorradar.cli import EXIT_FAILURE, EXIT_OK, app
 
 runner = CliRunner()
 
-# Stages that are declared but whose phase has not landed yet.
-STUB_STAGES = [
+# Every pipeline stage. All of them are implemented and all of them need a
+# database, so the shared contract to check is how they behave without one.
+ALL_STAGES = [
+    "discover",
+    "resolve",
     "fetch",
     "extract",
     "classify",
+    "geocode",
     "run",
     "stats",
     "snapshot",
     "export",
 ]
-
-# Stages that do real work and therefore need a database.
-IMPLEMENTED_STAGES = ["discover", "resolve", "geocode"]
-
-ALL_STAGES = [*STUB_STAGES, *IMPLEMENTED_STAGES]
 
 
 @pytest.fixture(autouse=True)
@@ -87,14 +86,6 @@ def test_doctor_flags_a_missing_contact_address(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("sectorradar.config.load_dotenv", lambda *a, **k: False)
     result = runner.invoke(app, ["doctor"])
     assert "UNSET" in result.output
-
-
-@pytest.mark.parametrize("stage", STUB_STAGES)
-def test_unimplemented_stages_exit_2(stage: str) -> None:
-    runner.invoke(app, ["init"])
-    result = runner.invoke(app, [stage, "--segment", "agentic-ai-ch"])
-    assert result.exit_code == EXIT_USAGE, f"{stage} should exit {EXIT_USAGE}"
-    assert "not implemented" in result.output
 
 
 @pytest.mark.parametrize("stage", ALL_STAGES)
