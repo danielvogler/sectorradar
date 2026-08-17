@@ -374,3 +374,33 @@ def test_a_value_outside_the_segment_vocabulary_is_refused(
         "SELECT COUNT(*) AS n FROM tag WHERE company_id = ?", (company_id,)
     ).fetchone()
     assert tags["n"] == 0
+
+
+def test_rag_does_not_match_leverage_or_storage() -> None:
+    """The bug that produced 95 RAG companies from 51 real ones.
+
+    A substring test looked right and was badly wrong: "rag" sits inside
+    "leverage", "storage", "average", "drag" and the German "fragen", and
+    "leverage" appears in roughly every second piece of marketing copy.
+    """
+    assert not classify.tag_is_grounded("rag", "We leverage AI for cloud storage.")
+    assert not classify.tag_is_grounded("rag", "Above average results. Drag and drop.")
+    assert not classify.tag_is_grounded("rag", "Wir beantworten Ihre Fragen.")
+    assert classify.tag_is_grounded("rag", "RAG pipelines with vector stores.")
+    assert classify.tag_is_grounded("rag", "retrieval augmented generation")
+
+
+def test_extraction_does_not_write_facet_tags(conn: sqlite3.Connection) -> None:
+    """classify owns tags, because only it checks them.
+
+    Writing them from extract as well bypassed every check — the vocabulary
+    restriction and the grounding test both — which is how "tax", "esg" and
+    "graphic_design" reached a service_type column whose declared vocabulary
+    has seven entries.
+    """
+    import inspect
+
+    from sectorradar import extract as extract_mod
+
+    source = inspect.getsource(extract_mod)
+    assert "INSERT INTO tag" not in source

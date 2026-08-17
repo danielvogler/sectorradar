@@ -12,6 +12,7 @@ Paraphrasing them here would mean the boundary lives in two places and drifts.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -122,12 +123,18 @@ TAG_EVIDENCE: dict[str, tuple[str, ...]] = {
 def tag_is_grounded(value: str, evidence: str) -> bool:
     """Whether the company's own text supports a facet value.
 
-    Falls back to a literal match on the value itself for anything not in
-    :data:`TAG_EVIDENCE`, so a segment can add vocabulary without editing code.
+    Matches on word boundaries, not substrings. A plain ``in`` test looked
+    right and was badly wrong: the three-letter token ``rag`` is inside
+    ``leverage``, ``storage``, ``average``, ``drag`` and the German ``fragen``,
+    and "leverage" appears in roughly every second piece of marketing copy —
+    which is how 95 companies came back doing retrieval-augmented generation.
+
+    Falls back to the value itself for anything not in :data:`TAG_EVIDENCE`, so
+    a segment can extend its vocabulary without editing code.
     """
     haystack = evidence.casefold()
     needles = TAG_EVIDENCE.get(value, (value.replace("_", " "),))
-    return any(needle in haystack for needle in needles)
+    return any(re.search(rf"\b{re.escape(needle)}", haystack) is not None for needle in needles)
 
 
 def fails_geography(city: str | None, geocode_status: str | None) -> bool:

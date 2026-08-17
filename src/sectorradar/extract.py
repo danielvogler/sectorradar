@@ -327,17 +327,12 @@ def extract(
         # interrupt throws away work that has already been paid for.
         conn.commit()
 
-        for facet, values in profile.facets.items():
-            for value in values:
-                conn.execute(
-                    """
-                    INSERT INTO tag (company_id, facet, value, confidence, source_url)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(company_id, facet, value) DO UPDATE SET
-                      confidence = excluded.confidence
-                    """,
-                    (company_id, facet, value, profile.confidence, primary_url),
-                )
+        # Facet tags are deliberately NOT written here. classify.py owns them,
+        # because only it checks them against the segment's vocabulary and
+        # against what the site actually said. Writing them from both places
+        # meant every check classify applied was bypassed by this loop — which
+        # is how "tax", "esg" and "gala dinner" reached a service_type column
+        # whose declared vocabulary has seven entries.
 
     if dry_run:
         conn.rollback()
