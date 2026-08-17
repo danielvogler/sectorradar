@@ -155,16 +155,28 @@ def test_facet_values_are_stored_as_tags(conn: sqlite3.Connection, settings: Set
     assert [(t["facet"], t["value"]) for t in tags] == [("service_type", "agent_dev")]
 
 
-def test_a_new_value_inside_a_known_facet_is_allowed(
+def test_a_value_outside_the_declared_vocabulary_is_rejected(
     conn: sqlite3.Connection, settings: Settings
 ) -> None:
-    """Facets are fixed; values are open, so the vocabulary can grow from evidence."""
+    """A deliberate reversal of the specification, on the evidence.
+
+    §7 says facets are fixed but values are open, so the vocabulary can grow
+    from what the market actually does. Run against 246 real companies that
+    produced 130+ distinct service types, most appearing once, including "gala
+    dinner", "podcast", "magazine" and "ambassador program" — unusable as a
+    filter and not what the facet means.
+
+    Values outside the segment's list are now refused and logged, so frequent
+    ones can be promoted into the YAML deliberately, which is what §7 asks for
+    in the next sentence anyway.
+    """
     company_id = _company(conn)
-    classify.classify(
+    report = classify.classify(
         conn, SEGMENT, settings, FakeLLM(_decision(facets={"service_type": ["evals"]}))
     )
+    assert report.tags_out_of_vocabulary == 1
     tags = conn.execute("SELECT value FROM tag WHERE company_id = ?", (company_id,)).fetchall()
-    assert [t["value"] for t in tags] == ["evals"]
+    assert tags == []
 
 
 def test_an_invented_facet_is_refused(conn: sqlite3.Connection, settings: Settings) -> None:
@@ -310,3 +322,55 @@ def test_an_out_of_area_company_is_rejected_without_an_llm_call(
     assert row["tier"] is None
     assert "Toronto" in row["tier_rationale"]
     assert "geography" in row["tier_rationale"].lower()
+
+
+# --- tags have to be earned -------------------------------------------------
+
+
+def test_a_tag_the_site_never_supported_is_dropped(
+    conn: sqlite3.Connection, settings: Settings
+) -> None:
+    """148 companies came back tagged 'rag'; 110 had no offering mentioning it.
+
+    A tag claims the company *does* something, so it should be traceable to
+    something the site said — the standard offerings are already held to.
+    """
+    company_id = _company(conn)
+    llm = FakeLLM(_decision(facets={"service_type": ["agent_dev"]}))
+    classify.classify(conn, SEGMENT, settings, llm)
+
+    # The fixture company's one_liner is "Builds agents." — nothing about RAG.
+    tags = conn.execute("SELECT value FROM tag WHERE company_id = ?", (company_id,)).fetchall()
+    assert [t["value"] for t in tags] == ["agent_dev"]
+
+
+def test_a_grounded_tag_survives() -> None:
+    assert classify.tag_is_grounded("rag", "We build retrieval augmented pipelines.")
+    assert classify.tag_is_grounded("agent_dev", "Autonomous agents for enterprise.")
+    assert classify.tag_is_grounded("workshops", "Wir bieten Schulungen für Teams.")
+
+
+def test_an_unsupported_tag_is_not_grounded() -> None:
+    assert not classify.tag_is_grounded("rag", "We build websites and mobile apps.")
+    assert not classify.tag_is_grounded("mlops", "Strategy consulting for retailers.")
+
+
+def test_grounding_falls_back_to_the_value_itself() -> None:
+    """A segment can add vocabulary without also editing the synonym table."""
+    assert classify.tag_is_grounded("widgets", "We sell widgets to industry.")
+    assert not classify.tag_is_grounded("widgets", "We sell gadgets.")
+
+
+def test_a_value_outside_the_segment_vocabulary_is_refused(
+    conn: sqlite3.Connection, settings: Settings
+) -> None:
+    """Free-form values produced 130+ service types including 'gala dinner'."""
+    company_id = _company(conn)
+    llm = FakeLLM(_decision(facets={"service_type": ["gala dinner"]}))
+    report = classify.classify(conn, SEGMENT, settings, llm)
+
+    assert report.tags_out_of_vocabulary == 1
+    tags = conn.execute(
+        "SELECT COUNT(*) AS n FROM tag WHERE company_id = ?", (company_id,)
+    ).fetchone()
+    assert tags["n"] == 0

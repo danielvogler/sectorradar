@@ -34,6 +34,8 @@ class ClassifyReport:
     classified: int = 0
     undecided: int = 0
     out_of_area: int = 0
+    tags_ungrounded: int = 0
+    tags_out_of_vocabulary: int = 0
     failed: int = 0
     skipped_reviewed: int = 0
     by_tier: dict[int, int] = field(default_factory=dict)
@@ -94,6 +96,38 @@ def build_prompt(
         offerings=_format_offerings(offerings),
         facts=_format_facts(facts),
     )
+
+
+#: Words that count as support for a controlled facet value. A tag claims the
+#: company *does* something, so it should be traceable to something the site
+#: said — the same standard offerings are held to.
+#:
+#: Without this, tags were pure assertion: 148 companies came back tagged `rag`
+#: and 110 of them had no offering mentioning retrieval or RAG at all, and
+#: `strategy` and `automation` were applied to almost every company in the
+#: segment, which makes the facet useless as a filter.
+TAG_EVIDENCE: dict[str, tuple[str, ...]] = {
+    "agent_dev": ("agent", "agentic", "autonom", "copilot", "assistant"),
+    "rag": ("rag", "retrieval", "vector", "embedding", "knowledge base", "wissensdatenbank"),
+    "workshops": ("workshop", "schulung", "seminar", "kurs", "formation", "training", "webinar"),
+    "training": ("training", "schulung", "kurs", "formation", "academy", "akademie", "lernen"),
+    "strategy": ("strateg", "roadmap", "beratung", "consult", "conseil", "advisory"),
+    "automation": ("automat", "workflow", "prozess", "process", "rpa", "n8n", "zapier"),
+    "mlops": ("mlops", "ml ops", "deployment", "monitoring", "pipeline", "productioniz"),
+    "staffing": ("staffing", "staff aug", "recruit", "personal", "interim", "outsourc"),
+    "staff_aug": ("staff aug", "staffing", "augmentation", "interim", "outsourc"),
+}
+
+
+def tag_is_grounded(value: str, evidence: str) -> bool:
+    """Whether the company's own text supports a facet value.
+
+    Falls back to a literal match on the value itself for anything not in
+    :data:`TAG_EVIDENCE`, so a segment can add vocabulary without editing code.
+    """
+    haystack = evidence.casefold()
+    needles = TAG_EVIDENCE.get(value, (value.replace("_", " "),))
+    return any(needle in haystack for needle in needles)
 
 
 def fails_geography(city: str | None, geocode_status: str | None) -> bool:
@@ -230,13 +264,37 @@ def classify(
             relevance=decision.relevance,
         )
 
+        # What the site actually said, for checking tags against.
+        evidence_text = " ".join(
+            [str(row["one_liner"] or "")]
+            + [f"{o['label']} {o['evidence_quote']}" for o in offerings]
+        )
+
         for facet, values in decision.facets.items():
             if segment.facets and facet not in segment.facets:
-                # Facets are fixed; values are open. A new facet is a config
-                # change, not something a model gets to invent mid-run.
+                # Facets are fixed. A new facet is a config change, not
+                # something a model gets to invent mid-run.
                 log.warning("classify.unknown_facet", facet=facet, domain=domain)
                 continue
+
+            allowed = set(segment.facets.get(facet, []))
             for value in values:
+                # Two checks, both of which the previous version skipped.
+                #
+                # The vocabulary is the segment's. Letting the model coin values
+                # freely produced 130+ distinct service types including "gala
+                # dinner", "podcast" and "magazine" — unusable as a filter.
+                # Rejected values are logged so frequent ones can be promoted
+                # into the YAML deliberately.
+                if allowed and value not in allowed:
+                    report.tags_out_of_vocabulary += 1
+                    log.debug("classify.tag_out_of_vocabulary", facet=facet, value=value)
+                    continue
+                # And the tag has to be traceable to something the site said.
+                if not tag_is_grounded(value, evidence_text):
+                    report.tags_ungrounded += 1
+                    log.debug("classify.tag_ungrounded", facet=facet, value=value, domain=domain)
+                    continue
                 conn.execute(
                     """
                     INSERT INTO tag (company_id, facet, value, confidence, source_url)
@@ -263,6 +321,8 @@ def classify(
         classified=report.classified,
         undecided=report.undecided,
         out_of_area=report.out_of_area,
+        tags_ungrounded=report.tags_ungrounded,
+        tags_out_of_vocabulary=report.tags_out_of_vocabulary,
         by_tier=report.by_tier,
         cost_usd=round(report.usage.cost_usd, 4),
     )
