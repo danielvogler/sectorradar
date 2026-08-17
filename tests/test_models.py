@@ -92,7 +92,7 @@ def test_classification_accepts_an_undecided_tier() -> None:
 
 def test_classification_rejects_a_tier_outside_the_scale() -> None:
     with pytest.raises(ValidationError):
-        Classification(tier=7, tier_rationale="nope", relevance=0.5)  # type: ignore[arg-type]
+        Classification(tier=7, tier_rationale="nope", relevance=0.5)
 
 
 def test_candidate_treats_blank_strings_as_missing() -> None:

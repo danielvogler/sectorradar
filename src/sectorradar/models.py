@@ -67,7 +67,11 @@ class CompanyProfile(Frozen):
 class Classification(Frozen):
     """Where a company sits relative to one segment's inclusion rule."""
 
-    tier: Tier | None = None
+    # A bounded int rather than ``Tier`` (a Literal), because this model is
+    # handed to a provider as a response schema and Gemini's schema dialect
+    # requires enum members to be strings — an int Literal is rejected outright
+    # and every classification call fails. ge/le enforces the same 1-4 range.
+    tier: int | None = Field(default=None, ge=1, le=4)
     tier_rationale: str = Field(min_length=1, max_length=1000)
     relevance: float = Field(ge=0.0, le=1.0)
     facets: dict[str, tuple[str, ...]] = Field(default_factory=dict)
