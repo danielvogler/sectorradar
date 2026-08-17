@@ -39,20 +39,156 @@ facets:
   tech: [langchain, langgraph, openai, anthropic, azure_openai, n8n, custom]
 
 sources:
+  # BOOTSTRAPPED BY AGENT — owner must review.
+  # Assembled from web search, not from the owner's own referral graph. §9 is
+  # explicit that the owner's referral graph and lost-pitch "we also considered
+  # X" list beat every automated channel for tier 1; replacing this list with
+  # that one is the single highest-value edit available to this file.
+  # `city`/`canton` are set only where a source stated them; the rest are left
+  # for `extract` to fill in from the company's own site.
   seeds:
     enabled: true
-    urls: []               # populated in phase 2
+    urls:
+      - url: https://unit8.com
+        name: Unit8
+        city: Lausanne
+        canton: VD
+        note: Swiss data and AI consultancy, named GenAI service line
+      - url: https://visium.ch
+        name: Visium
+        city: Zürich
+        canton: ZH
+      - url: https://www.zuehlke.com
+        name: Zühlke
+        city: Schlieren
+        canton: ZH
+      - url: https://troisol.ch
+        name: Troisol
+        city: Lausanne
+        canton: VD
+        note: RAG pipelines and LLM assistants
+      - url: https://www.vudu.ch
+        name: Vudu
+        city: Zürich
+        canton: ZH
+        note: autonomous agents, custom GPTs, LangChain, n8n
+      - url: https://lab51.io
+        name: Lab51
+        note: custom RAG-based agents for Swiss businesses
+      - url: https://mazdek.ch
+        name: mazdek
+        note: AI development and specialised agents
+      - url: https://www.corpin.ch
+        name: CorpIn
+        note: AI agent strategy, RAG and LangChain
+      - url: https://gipfel-werk.ch
+        name: Gipfelwerk
+        note: KI agency, use-case workshops
+      - url: https://www.akademie-ki.ch
+        name: Akademie für KI
+        city: Zürich
+        canton: ZH
+        note: KI-Agenten workshops for companies
+      - url: https://schweizer-ki-akademie.ch
+        name: Schweizer KI-Akademie
+        canton: ZH
+        note: KI workshops and consulting
+      - url: https://www.swiss-ai-experts.ch
+        name: Swiss AI Experts
+        note: KI consulting plus practical training
+      - url: https://seox.ch
+        name: SEOX
+        note: GEO and AI workshops for marketing teams
+      - url: https://ai-solutions.one
+        name: AI Solutions AG
+        note: AI consulting and software engineering
+      - url: https://datascience.ch
+        name: Swiss Data Science Center
+        city: Zürich
+        canton: ZH
+      - url: https://www.ergon.ch
+        name: Ergon Informatik
+        city: Zürich
+        canton: ZH
+      - url: https://www.bbv.ch
+        name: bbv Software Services
+        city: Luzern
+        canton: LU
+      - url: https://www.elca.ch
+        name: ELCA Informatique
+        city: Lausanne
+        canton: VD
+      - url: https://www.netcetera.com
+        name: Netcetera
+        city: Zürich
+        canton: ZH
+      - url: https://www.adnovum.com
+        name: AdNovum
+        city: Zürich
+        canton: ZH
+      - url: https://mindnow.io
+        name: Mindnow
+        city: Zürich
+        canton: ZH
+      - url: https://www.ti8m.com
+        name: Ti&m
+        city: Zürich
+        canton: ZH
+      - url: https://d4design.com
+        name: D4design Studios
+        city: Zürich
+        canton: ZH
+      - url: https://www.digicomp.ch
+        name: Digicomp
+        city: Zürich
+        canton: ZH
+        note: training provider running GenAI courses
 
   websearch:
     enabled: true
+    # Three languages, because Swiss firms market in three languages and a
+    # German-only query set silently misses Romandie and Ticino entirely.
     queries:
+      # German
       - "AI Agenten Entwicklung Schweiz"
-      - "agentic AI consulting Switzerland"
-      - "GenAI Workshop Unternehmen Schweiz"
       - "KI Beratung Schweiz LLM"
+      - "GenAI Workshop Unternehmen Schweiz"
+      - "KI Agenten Beratung Schweiz Unternehmen"
+      - "LLM Entwicklung Dienstleister Schweiz"
+      - "KI Schulung Firmen Schweiz Anbieter"
+      - "RAG Entwicklung Beratung Schweiz"
+      - "Prozessautomatisierung KI Schweiz Beratung"
+      # French
+      - "conseil intelligence artificielle Suisse entreprises"
+      - "agents IA développement Suisse"
+      - "formation IA générative entreprises Suisse"
+      # Italian
+      - "consulenza intelligenza artificiale Svizzera aziende"
+      # English
+      - "agentic AI consulting Switzerland"
       - "AI agency Zurich"
-      - 'site:.ch "AI agents" Beratung'
-      - 'site:.ch "GenAI Workshop"'
+      - "LLM consultancy Switzerland"
+      - "AI engineering services Switzerland"
+      - "generative AI consulting Swiss companies"
+      - "AI automation agency Switzerland"
+      - "machine learning consultancy Switzerland"
+      - "AI transformation partner Switzerland"
+      # By city, which surfaces smaller local firms the national queries miss
+      - "AI consulting Basel companies"
+      - "AI consulting Bern Unternehmen"
+      - "AI consulting Lausanne entreprises"
+      - "AI consulting Geneva companies"
+      - "AI consulting Zug companies"
+      - "AI consulting Lugano aziende"
+      - "AI consulting St. Gallen Unternehmen"
+      - "KI Beratung Luzern Unternehmen"
+      # Channels that surface firms before they market themselves
+      - "Swiss companies hiring LangGraph AI engineer"
+      - "Schweizer Firmen LLM Engineer Stellenangebot"
+      - "digitalswitzerland members artificial intelligence"
+      - "Microsoft AI partner Switzerland consulting"
+      - "Databricks partner Switzerland consulting"
+      - "n8n automation partner Switzerland"
 
   jobads:
     enabled: true
@@ -72,4 +208,76 @@ sources:
 
 # Recall is measured against this list on every run. It is the single most
 # important number in the project.
-gold_set: []               # populated in phase 2
+#
+# BOOTSTRAPPED BY AGENT — owner must review before any recall figure here is
+# quoted to anyone. Two caveats that matter:
+#
+#   1. These firms were found by web search, which is also one of the pipeline's
+#      own discovery channels. A gold set drawn from the same channel it
+#      measures inflates recall. The entries below came from a different search
+#      engine than the `websearch` source uses, which reduces the overlap but
+#      does not eliminate it.
+#   2. `expected_tier` is a judgement from a search-result snippet, not from
+#      reading each company's site. Treat it as a hint.
+#
+# The gold set this project actually deserves is the owner's own list of firms
+# he has lost pitches to. Until that replaces this, recall is a sanity signal —
+# "did discovery collapse" — and not a measurement of coverage.
+gold_set:
+  # Agentic AI / GenAI services as the primary offering
+  - domain: vudu.ch
+    expected_tier: 1
+  - domain: troisol.ch
+    expected_tier: 1
+  - domain: lab51.io
+    expected_tier: 1
+  - domain: mazdek.ch
+    expected_tier: 1
+  - domain: corpin.ch
+    expected_tier: 1
+  - domain: gipfel-werk.ch
+    expected_tier: 1
+  - domain: swiss-ai-experts.ch
+    expected_tier: 1
+  - domain: singularityio.ch
+    expected_tier: 1
+  - domain: agentixlabs.ch
+    expected_tier: 1
+  - domain: swissllm.ch
+    expected_tier: 1
+  - domain: gptconsulting.ch
+    expected_tier: 1
+  # Broader AI / data consultancies that also ship agents or run workshops
+  - domain: unit8.com
+    expected_tier: 2
+  - domain: visium.ch
+    expected_tier: 2
+  - domain: zuehlke.com
+    expected_tier: 2
+  - domain: ai-solutions.one
+    expected_tier: 2
+  - domain: datascience.ch
+    expected_tier: 2
+  - domain: ergon.ch
+    expected_tier: 2
+  - domain: bbv.ch
+    expected_tier: 2
+  - domain: elca.ch
+    expected_tier: 2
+  - domain: netcetera.com
+    expected_tier: 2
+  - domain: adnovum.com
+    expected_tier: 2
+  - domain: mindnow.io
+    expected_tier: 2
+  - domain: ti8m.com
+    expected_tier: 2
+  # Training and workshop providers
+  - domain: akademie-ki.ch
+    expected_tier: 4
+  - domain: schweizer-ki-akademie.ch
+    expected_tier: 4
+  - domain: digicomp.ch
+    expected_tier: 4
+  - domain: seox.ch
+    expected_tier: 4

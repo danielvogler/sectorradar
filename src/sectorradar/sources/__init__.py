@@ -54,10 +54,11 @@ def _install() -> None:
     import (a missing optional dependency, say) is a clear error at startup
     rather than a mysteriously absent registry entry.
     """
-    from sectorradar.sources import seeds, websearch
+    from sectorradar.sources import lindas, seeds, websearch
 
     register("seeds", seeds.run)
     register("websearch", websearch.run)
+    register("lindas", lindas.run)
 
 
 _install()
