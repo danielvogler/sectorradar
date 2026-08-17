@@ -370,3 +370,40 @@ def test_extract_is_a_no_op_without_fetched_pages(
 
     assert llm.calls == 0
     assert report.companies == 0
+
+
+def test_a_long_but_verbatim_quote_is_accepted() -> None:
+    """One over-long quote must not discard the whole profile.
+
+    The schema validates a CompanyProfile as a unit, so a single quote past the
+    limit used to fail the entire company and throw away every good offering
+    with it. Losing one claim to a rule is reasonable; losing the company is
+    not. The substring check, not the length cap, is what keeps claims honest.
+    """
+    long_quote = PAGE_TEXT[:200]
+    assert len(long_quote) > 120
+    profile = CompanyProfile(
+        domain="acme.ch",
+        one_liner="x",
+        offerings=(Offering(label="Long", evidence_quote=long_quote, evidence_url=PAGE_URL),),
+    )
+    kept, dropped = extract.drop_unsupported(profile, {PAGE_URL: PAGE_TEXT})
+    assert len(kept.offerings) == 1
+    assert dropped == 0
+
+
+def test_a_long_fabricated_quote_is_still_dropped() -> None:
+    """Raising the length cap must not weaken the check that actually matters."""
+    fabricated = (
+        "Acme Intelligence provides a fully managed round-the-clock AI operations "
+        "service with a guaranteed 99.99% uptime SLA and dedicated support engineers."
+    )
+    assert len(fabricated) > 120
+    profile = CompanyProfile(
+        domain="acme.ch",
+        one_liner="x",
+        offerings=(Offering(label="Managed", evidence_quote=fabricated, evidence_url=PAGE_URL),),
+    )
+    kept, dropped = extract.drop_unsupported(profile, {PAGE_URL: PAGE_TEXT})
+    assert len(kept.offerings) == 0
+    assert dropped == 1

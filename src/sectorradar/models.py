@@ -15,9 +15,23 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 ReviewState = Literal["pending", "accepted", "rejected", "needs_info"]
 Tier = Literal[1, 2, 3, 4]
 
-# An evidence quote is a verbatim fragment, capped so that the model cannot
-# smuggle a whole paraphrased paragraph past the substring check.
-MAX_EVIDENCE_CHARS = 120
+# An evidence quote is a verbatim fragment. The cap is a secondary guard
+# against a whole paraphrased paragraph being passed off as a quote; the real
+# defence is the substring check in extract.py, which no amount of length gets
+# a fabricated claim past.
+#
+# It sits at 400 rather than the 120 the prompt asks for, because the two
+# limits do different jobs. The prompt asks for at most 15 words and models
+# mostly comply — but "mostly" matters here: pydantic validates the whole
+# CompanyProfile at once, so a single over-long quote used to fail the entire
+# profile and discard every good offering alongside it. Losing one claim to a
+# rule is reasonable; losing the company is not.
+MAX_EVIDENCE_CHARS = 400
+
+#: What the prompt asks for. Quotes longer than this are accepted if they are
+#: genuinely verbatim, but their length is a hint that the model is
+#: summarising rather than citing.
+PREFERRED_EVIDENCE_CHARS = 120
 
 
 class Frozen(BaseModel):

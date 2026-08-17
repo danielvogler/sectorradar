@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from sectorradar.config import ConfigError, Settings
 from sectorradar.logging import get_logger
@@ -110,10 +110,35 @@ class VertexClient:
         if isinstance(parsed, schema):
             return Structured(value=parsed, usage=usage)
 
-        # The SDK returns None when the model emitted something unparseable.
-        # That is a normal outcome on messy input, not an exception: the caller
-        # counts it and moves on rather than losing the whole run.
-        log.warning("llm.unparseable_response", model=self.model, text=(response.text or "")[:200])
+        # The SDK hands back None for both "the model emitted broken JSON" and
+        # "the JSON did not satisfy the schema", which are very different
+        # problems. Re-parse to find out which, and log the field that actually
+        # failed — otherwise a systematic schema mismatch looks like random
+        # flakiness and stays unfixed.
+        text = response.text or ""
+        try:
+            schema.model_validate_json(text)
+        except ValidationError as exc:
+            log.warning(
+                "llm.schema_violation",
+                model=self.model,
+                finish_reason=str(getattr(response.candidates[0], "finish_reason", "?"))
+                if response.candidates
+                else "?",
+                errors=[
+                    {"field": ".".join(str(p) for p in e["loc"]), "problem": e["msg"]}
+                    for e in exc.errors()[:5]
+                ],
+            )
+        except ValueError:
+            log.warning(
+                "llm.unparseable_response",
+                model=self.model,
+                finish_reason=str(getattr(response.candidates[0], "finish_reason", "?"))
+                if response.candidates
+                else "?",
+                text=text[:200],
+            )
         return Structured(value=None, usage=usage)
 
 
