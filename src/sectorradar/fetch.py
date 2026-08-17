@@ -22,6 +22,7 @@ import sqlite3
 import time
 import urllib.robotparser
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,9 @@ MIN_INTERVAL = 1.0
 MAX_PAGES_PER_COMPANY = 8
 MAX_RETRIES = 3
 TIMEOUT = 20.0
+#: Companies crawled at once. The rate limit is per host and a company is one
+#: host, so this parallelises across sites without hurrying any single one.
+MAX_WORKERS = 8
 
 #: Paths worth trying, in the three languages Swiss firms actually publish in.
 CANDIDATE_PATHS: tuple[str, ...] = (
@@ -67,6 +71,22 @@ BLOCK_MARKERS: tuple[str, ...] = (
     "unusual traffic",
     "request blocked",
 )
+
+
+#: One row destined for the `page` table.
+PageRecord = tuple[str, int, str, str, int, str, str]
+
+
+@dataclass
+class CompanyCrawl:
+    """What one worker found. Plain data, safe to hand across a thread."""
+
+    pages: list[PageRecord] = field(default_factory=list)
+    requested: int = 0
+    unchanged: int = 0
+    disallowed: int = 0
+    blocked: int = 0
+    errors: int = 0
 
 
 @dataclass
@@ -223,26 +243,89 @@ def fetch(
     *,
     force: bool = False,
     dry_run: bool = False,
+    workers: int = MAX_WORKERS,
 ) -> FetchReport:
-    """Crawl each in-scope company's own site, caching raw HTML."""
+    """Crawl each in-scope company's own site, caching raw HTML.
+
+    Companies are crawled concurrently, one worker per company. The politeness
+    limit is *per host* and a company is one host, so a worker per company
+    honours every individual site's rate limit exactly as the sequential
+    version did — it simply stops making one slow server delay every other
+    site's crawl. Sequentially this takes about half an hour for 150 companies;
+    the wait is almost entirely idle time.
+
+    SQLite writes stay on the calling thread. Workers do network and disk only
+    and hand back plain records, which keeps the connection single-threaded
+    without a lock.
+    """
     user_agent = settings.user_agent()  # raises if SECTORRADAR_CONTACT is unset
     raw_dir = settings.raw_dir
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     report = FetchReport()
-    politeness = Politeness(user_agent)
     rows = _companies_to_fetch(conn, segment)
 
-    with httpx.Client(headers={"User-Agent": user_agent}, follow_redirects=True) as client:
-        for row in rows:
-            report.companies += 1
-            _fetch_one(conn, client, politeness, row, raw_dir, report, force=force, dry_run=dry_run)
-            # Commit per company rather than once at the end. A crawl of 150
-            # sites at one request per second runs for half an hour, and a
-            # single commit at the end means an interrupt discards all of it.
-            # Worse, the HTML already written to data/raw/ would be orphaned:
-            # the `page` rows are what link a content hash back to a company,
-            # so without them a restart re-fetches everything it just fetched.
+    # Read what is already stored once, up front, rather than querying inside
+    # each worker — workers must not touch the connection.
+    known: set[str] = set()
+    if not force:
+        known = {
+            str(r["url_sha"])
+            for r in conn.execute(
+                "SELECT url_sha FROM page WHERE content_sha IS NOT NULL"
+            ).fetchall()
+        }
+
+    jobs = [(int(r["id"]), str(r["domain"])) for r in rows]
+    report.companies = len(jobs)
+
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = {
+            pool.submit(
+                _crawl_company, company_id, domain, known, user_agent, raw_dir, dry_run=dry_run
+            ): domain
+            for company_id, domain in jobs
+        }
+
+        for future in as_completed(futures):
+            domain = futures[future]
+            try:
+                result = future.result()
+            except Exception as exc:
+                report.errors += 1
+                log.warning("fetch.company_failed", domain=domain, error=str(exc))
+                continue
+
+            report.requested += result.requested
+            report.unchanged += result.unchanged
+            report.disallowed += result.disallowed
+            report.errors += result.errors
+            if result.blocked:
+                report.blocked += result.blocked
+                if domain not in report.blocked_hosts:
+                    report.blocked_hosts.append(domain)
+
+            for record in result.pages:
+                conn.execute(
+                    """
+                    INSERT INTO page
+                      (url_sha, company_id, url, content_sha, http_status, fetched_at, path)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(url_sha) DO UPDATE SET
+                      content_sha = excluded.content_sha,
+                      http_status = excluded.http_status,
+                      fetched_at  = excluded.fetched_at,
+                      path        = excluded.path
+                    """,
+                    record,
+                )
+                report.stored += 1
+
+            # Commit as each company lands. A crawl of 150 sites runs for
+            # minutes even concurrently, and a single commit at the end would
+            # mean an interrupt discards all of it — orphaning the HTML already
+            # on disk, because the page rows are what link a content hash back
+            # to a company.
             if not dry_run:
                 conn.commit()
 
@@ -264,86 +347,76 @@ def fetch(
     return report
 
 
-def _fetch_one(
-    conn: sqlite3.Connection,
-    client: httpx.Client,
-    politeness: Politeness,
-    row: sqlite3.Row,
+def _crawl_company(
+    company_id: int,
+    domain: str,
+    known: set[str],
+    user_agent: str,
     raw_dir: Path,
-    report: FetchReport,
     *,
-    force: bool,
     dry_run: bool,
-) -> None:
-    company_id, domain = int(row["id"]), str(row["domain"])
+) -> CompanyCrawl:
+    """Crawl one company. Network and disk only — never touches the database.
+
+    Runs on a worker thread, so it returns records for the caller to write
+    rather than writing them itself.
+    """
+    result = CompanyCrawl()
+    politeness = Politeness(user_agent)
     stored_for_company = 0
 
-    for url in _targets(domain):
-        if stored_for_company >= MAX_PAGES_PER_COMPANY:
-            break
+    with httpx.Client(headers={"User-Agent": user_agent}, follow_redirects=True) as client:
+        for url in _targets(domain):
+            if stored_for_company >= MAX_PAGES_PER_COMPANY:
+                break
 
-        if not politeness.allowed(url, client):
-            report.disallowed += 1
-            log.debug("fetch.disallowed", url=url)
-            continue
+            if not politeness.allowed(url, client):
+                result.disallowed += 1
+                log.debug("fetch.disallowed", url=url)
+                continue
 
-        sha = url_sha(url)
-        if not force:
-            existing = conn.execute(
-                "SELECT content_sha FROM page WHERE url_sha = ?", (sha,)
-            ).fetchone()
-            if existing and existing["content_sha"]:
-                report.unchanged += 1
+            sha = url_sha(url)
+            if sha in known:
+                result.unchanged += 1
                 stored_for_company += 1
                 continue
 
-        politeness.wait(url)
-        report.requested += 1
-        response = get_with_retries(client, url)
+            politeness.wait(url)
+            result.requested += 1
+            response = get_with_retries(client, url)
 
-        if response is None:
-            report.errors += 1
-            continue
+            if response is None:
+                result.errors += 1
+                continue
 
-        if response.status_code == 404:
-            continue
+            if response.status_code == 404:
+                continue
 
-        body = response.text
-        if looks_blocked(response.status_code, body):
-            report.blocked += 1
-            host = urlparse(url).hostname or domain
-            if host not in report.blocked_hosts:
-                report.blocked_hosts.append(host)
-            log.warning("fetch.blocked", url=url, status=response.status_code)
-            # Back off from this host entirely rather than probing further.
-            break
+            body = response.text
+            if looks_blocked(response.status_code, body):
+                result.blocked += 1
+                log.warning("fetch.blocked", url=url, status=response.status_code)
+                # Back off from this host entirely rather than probing further.
+                break
 
-        if response.status_code != 200:
-            continue
+            if response.status_code != 200:
+                continue
 
-        text = main_text(body)
-        if not text:
-            continue
+            text = main_text(body)
+            if not text:
+                continue
 
-        digest = content_sha(text)
-        path = raw_dir / f"{digest}.html"
-        if not dry_run and not path.exists():
-            path.write_text(body, encoding="utf-8")
+            digest = content_sha(text)
+            path = raw_dir / f"{digest}.html"
+            if not dry_run and not path.exists():
+                path.write_text(body, encoding="utf-8")
 
-        conn.execute(
-            """
-            INSERT INTO page (url_sha, company_id, url, content_sha, http_status, fetched_at, path)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(url_sha) DO UPDATE SET
-              content_sha = excluded.content_sha,
-              http_status = excluded.http_status,
-              fetched_at  = excluded.fetched_at,
-              path        = excluded.path
-            """,
-            (sha, company_id, url, digest, response.status_code, _now(), str(path)),
-        )
-        report.stored += 1
-        stored_for_company += 1
+            result.pages.append(
+                (sha, company_id, url, digest, response.status_code, _now(), str(path))
+            )
+            stored_for_company += 1
+
+    return result
 
 
 def page_texts(

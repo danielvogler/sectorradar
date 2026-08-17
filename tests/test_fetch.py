@@ -174,3 +174,61 @@ def test_a_bot_block_stops_that_host(
     assert report.blocked >= 1
     assert "example.ch" in report.blocked_hosts
     assert report.requested == 1, "should stop probing a host that blocked us"
+
+
+def test_concurrent_crawl_still_writes_every_company(
+    conn: sqlite3.Connection, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Parallelising across hosts must not lose or duplicate a company's pages."""
+    for i in range(12):
+        _company(conn, f"firm{i}.ch")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        if request.url.path == "/":
+            return httpx.Response(200, text=PAGE)
+        return httpx.Response(404)
+
+    monkeypatch.setattr(fetch, "MIN_INTERVAL", 0.0)
+    original_client = httpx.Client
+
+    def patched(*args: object, **kwargs: object) -> httpx.Client:
+        kwargs["transport"] = _transport(handler)
+        return original_client(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(httpx, "Client", patched)
+    report = fetch.fetch(conn, SEGMENT, settings, workers=6)
+
+    assert report.companies == 12
+    assert report.stored == 12
+    rows = conn.execute("SELECT COUNT(DISTINCT company_id) AS n FROM page").fetchone()
+    assert rows["n"] == 12
+
+
+def test_a_second_run_skips_everything_already_stored(
+    conn: sqlite3.Connection, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """content_sha skipping is what makes re-running cheap enough to do often."""
+    _company(conn)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        if request.url.path == "/":
+            return httpx.Response(200, text=PAGE)
+        return httpx.Response(404)
+
+    monkeypatch.setattr(fetch, "MIN_INTERVAL", 0.0)
+    original_client = httpx.Client
+
+    def patched(*args: object, **kwargs: object) -> httpx.Client:
+        kwargs["transport"] = _transport(handler)
+        return original_client(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(httpx, "Client", patched)
+    fetch.fetch(conn, SEGMENT, settings)
+    second = fetch.fetch(conn, SEGMENT, settings)
+
+    assert second.stored == 0
+    assert second.unchanged >= 1
