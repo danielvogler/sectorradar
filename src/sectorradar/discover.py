@@ -83,11 +83,28 @@ def discover(
     """Run the requested sources, or every enabled one."""
     db.upsert_segment(conn, segment.slug, segment.name, segment.to_yaml())
 
+    explicit = sources is not None
     requested = sources if sources is not None else segment.enabled_sources()
     unknown = [name for name in requested if name not in SOURCES]
-    if unknown:
+
+    if unknown and explicit:
+        # The caller named a source that does not exist — almost always a typo
+        # on `--source`, and worth failing on so it is not silently ignored.
         msg = f"unknown source(s): {', '.join(unknown)}. Available: {', '.join(sorted(SOURCES))}"
         raise ValueError(msg)
+
+    if unknown:
+        # A segment YAML enabling a source this build does not carry is a
+        # different situation: the config is describing a channel that has not
+        # been implemented yet, or has been removed. Warn and run the rest,
+        # rather than making one stale line in a YAML file abort the pipeline.
+        log.warning(
+            "discover.unknown_sources_skipped",
+            skipped=unknown,
+            available=sorted(SOURCES),
+            segment=segment.slug,
+        )
+        requested = [name for name in requested if name in SOURCES]
 
     report = DiscoveryReport(segment=segment.slug)
     known = _known_keys(conn, segment.slug)

@@ -16,7 +16,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from sectorradar import db
+from sectorradar import db, swiss
 from sectorradar.config import Segment, Settings
 from sectorradar.llm import LLMClient, Usage
 from sectorradar.logging import get_logger
@@ -54,12 +54,27 @@ def _format_facts(rows: list[sqlite3.Row]) -> str:
     return "\n".join(f"- {r['field']}: {r['value']}" for r in visible)
 
 
+def _location(city: str | None, canton: str | None, country: str | None) -> str:
+    """What the extraction step found about where this company sits.
+
+    Rendered explicitly rather than left out when empty, because "the site was
+    read and no address was found" is evidence the classifier should weigh, and
+    an absent field reads as an oversight instead.
+    """
+    parts = [p for p in (city, swiss.canton_name(canton) or canton, country) if p]
+    return ", ".join(parts) if parts else "none recorded"
+
+
 def build_prompt(
     segment: Segment,
     domain: str,
     one_liner: str | None,
     offerings: list[sqlite3.Row],
     facts: list[sqlite3.Row],
+    *,
+    city: str | None = None,
+    canton: str | None = None,
+    country: str | None = None,
 ) -> str:
     template = PROMPT_PATH.read_text(encoding="utf-8")
     tiers = "\n".join(f"- **Tier {n}** — {text}" for n, text in sorted(segment.tiers.items()))
@@ -68,6 +83,8 @@ def build_prompt(
         or "- (no controlled facets for this segment)"
     )
     return template.format(
+        country=segment.geo.country,
+        location=_location(city, canton, country),
         inclusion=segment.inclusion.strip(),
         tiers=tiers,
         facets=facets,
@@ -87,7 +104,7 @@ def _to_classify(conn: sqlite3.Connection, segment: Segment, *, force: bool) -> 
     """
     clause = "" if force else "AND COALESCE(m.review_state, 'pending') = 'pending'"
     sql = f"""
-        SELECT c.id, c.domain, c.one_liner, m.review_state
+        SELECT c.id, c.domain, c.one_liner, c.city, c.canton, c.country, m.review_state
           FROM company c
           JOIN membership m ON m.company_id = c.id
          WHERE m.segment_slug = ?
@@ -132,7 +149,16 @@ def classify(
             "SELECT field, value FROM company_field WHERE company_id = ?", (company_id,)
         ).fetchall()
 
-        prompt = build_prompt(segment, domain, row["one_liner"], offerings, facts)
+        prompt = build_prompt(
+            segment,
+            domain,
+            row["one_liner"],
+            offerings,
+            facts,
+            city=row["city"],
+            canton=row["canton"],
+            country=row["country"],
+        )
         result = client.structured(prompt, Classification)
         report.usage = report.usage + result.usage
 

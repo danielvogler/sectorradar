@@ -117,6 +117,15 @@ show_error_codes = true
 module = ["selectolax.*"]
 ignore_missing_imports = true
 
+# `lib` is the app's own package under app/lib, reached through a sys.path shim
+# rather than an install. It is deliberately outside mypy's `files`, because
+# app/ is Streamlit glue and type-checking it would mean type-checking
+# Streamlit's dynamic surface. The tests that exercise its pure logic still
+# need to import it.
+[[tool.mypy.overrides]]
+module = ["lib.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers --strict-config"

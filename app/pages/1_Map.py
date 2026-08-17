@@ -18,15 +18,22 @@ st.set_page_config(page_title="Map · sectorradar", page_icon="🗺️", layout=
 SWITZERLAND = pdk.ViewState(latitude=46.80, longitude=8.23, zoom=6.9)
 
 
-def radius_for(headcount: object) -> int:
-    """Marker size by headcount, on a gentle curve.
+def radius_for(headcount: object) -> float:
+    """Marker size in *pixels*, by headcount, on a gentle curve.
 
-    Linear scaling makes a 400-person integrator swamp thirty ten-person
-    consultancies, which is the opposite of what this map is for.
+    Pixels, not metres. ScatterplotLayer measures radius in metres by default,
+    which means a marker covers a fixed patch of ground and grows on screen as
+    you zoom in — so two companies in the same city stay merged into one blob
+    however far you zoom, which is precisely when you want them to separate.
+    In pixels the marker is a fixed screen size and zooming pulls them apart.
+
+    The curve is gentle because linear scaling makes one 400-person integrator
+    swamp thirty ten-person consultancies, which is the opposite of what this
+    map is for.
     """
     if not headcount:
-        return 1200
-    return int(1000 + 220 * (float(headcount) ** 0.5))
+        return 5.0
+    return round(min(4.0 + 1.6 * (float(headcount) ** 0.5), 22.0), 1)
 
 
 def main() -> None:
@@ -47,12 +54,14 @@ def main() -> None:
     if not rows:
         st.info("No companies match these filters, or none have been geocoded yet.", icon="🔍")
     else:
+        tags_by_company = queries.tags_by_company(segment)
         points = [
             {
                 "name": r["canonical_name"],
                 "domain": r["domain"],
-                "one_liner": r["one_liner"] or "",
+                "one_liner": (r["one_liner"] or "")[:160],
                 "tier": f"Tier {r['tier']}" if r["tier"] else "unclassified",
+                "does": ", ".join(tags_by_company.get(int(r["id"]), [])[:5]) or "—",
                 "lat": r["lat"],
                 "lon": r["lon"],
                 "colour": filters.colour_for(r["tier"]),
@@ -72,15 +81,23 @@ def main() -> None:
                         get_position="[lon, lat]",
                         get_fill_color="colour",
                         get_radius="radius",
+                        # Radius is a screen measurement, so markers separate as
+                        # you zoom instead of staying a single blob per city.
+                        radius_units="pixels",
+                        stroked=True,
+                        get_line_color=[255, 255, 255, 180],
+                        line_width_min_pixels=1,
                         pickable=True,
-                        radius_min_pixels=4,
-                        radius_max_pixels=40,
+                        opacity=0.75,
                     )
                 ],
-                tooltip={"text": "{name}\n{tier}\n{domain}\n{one_liner}"},
+                tooltip={"text": "{name} — {tier}\n{domain}\n{does}\n{one_liner}"},
             )
         )
-        st.caption(f"{len(points)} companies shown. Colour is tier, size is headcount estimate.")
+        st.caption(
+            f"{len(points)} companies shown. Colour is tier, size is headcount estimate. "
+            "Several companies often share a city — zoom in to separate them."
+        )
 
     # Rows without coordinates are listed rather than dropped: a map that
     # silently omits a third of the market is worse than no map.

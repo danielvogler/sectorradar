@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 
 from rapidfuzz import fuzz
 
-from sectorradar import db
+from sectorradar import db, swiss
 from sectorradar.config import Segment
 from sectorradar.logging import get_logger
 
@@ -74,6 +74,28 @@ EXCLUDED_HOSTS: frozenset[str] = frozenset(
         "wixsite.com",
         "squarespace.com",
         "notion.site",
+        # Listicle and lead-generation sites. These rank well for "top AI
+        # companies in <country>" precisely because that is what they are for,
+        # so a search-driven source returns them constantly. They are writing
+        # *about* the market, not operating in it.
+        "techbehemoths.com",
+        "aisuperior.com",
+        "digiscorp.com",
+        "mobian.studio",
+        "flypix.ai",
+        "aiagencies.eu",
+        "themanifest.com",
+        "goodfirms.com",
+        "topdevelopers.co",
+        "itfirms.co",
+        "superbcompanies.com",
+        "startup-insider.com",
+        "wellfound.com",
+        "remoterocketship.com",
+        "meetfrank.com",
+        "lespepitestech.com",
+        "ensun.io",
+        "swissmadesoftware.org",
     }
 )
 
@@ -357,7 +379,7 @@ def resolve(conn: sqlite3.Connection, segment: Segment, *, dry_run: bool = False
                 domain=domain,
                 canonical_name=canonical_name_for(name, domain),
                 city=row["raw_city"],
-                canton=row["raw_canton"],
+                canton=swiss.canton_code(row["raw_canton"]),
             )
         else:
             duplicate_of = _find_duplicate_candidate(name, row["raw_canton"], known)
@@ -366,7 +388,7 @@ def resolve(conn: sqlite3.Connection, segment: Segment, *, dry_run: bool = False
                 domain=domain,
                 canonical_name=canonical_name_for(name, domain),
                 city=row["raw_city"],
-                canton=row["raw_canton"],
+                canton=swiss.canton_code(row["raw_canton"]),
             )
             by_domain[domain] = company_id
             known.append((company_id, domain, canonical_name_for(name, domain), row["raw_canton"]))

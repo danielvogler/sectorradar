@@ -21,6 +21,7 @@ from typing import Any
 
 import httpx
 
+from sectorradar import swiss
 from sectorradar.config import Segment, Settings
 from sectorradar.logging import get_logger
 from sectorradar.models import GeoPoint
@@ -114,8 +115,10 @@ def build_query(
 ) -> str | None:
     """The most specific query the known fields support, or None if too little."""
     parts = [p.strip() for p in (street, postal_code, city) if p and p.strip()]
-    if not parts and canton and canton.upper() in CANTON_NAMES:
-        parts = [CANTON_NAMES[canton.upper()]]
+    if not parts:
+        name = swiss.canton_name(swiss.canton_code(canton))
+        if name:
+            parts = [name]
     if not parts:
         return None
     return ", ".join([*parts, "Switzerland"])

@@ -13,6 +13,24 @@ rather than your own sense of what the segment is "really" about.
 
 {tiers}
 
+## Geography — check this first
+
+This segment covers **{country}** only. Before considering tier at all, decide
+whether this company has a real presence there: an office, a registered
+entity, or an address. A company that merely *sells into* the country, lists it
+among twenty others, or happens to rank in a search for it does **not** qualify.
+
+Return `tier: null` when there is no evidence of presence in {country}. Say so
+in the rationale. This is the most common reason to reject a company, and
+getting it wrong is what fills a market map with offshore development agencies
+that have never had a client there.
+
+Recorded location for this company: **{location}**
+
+If that says "none recorded", the extraction step read the site and found no
+address in {country}. Treat that as meaningful evidence of absence, not as a
+gap to be generous about.
+
 ## The company
 
 Domain: {domain}
@@ -56,6 +74,16 @@ and you may not tag something the evidence does not show.
   consultancy that uses LLMs to write its own proposals is not selling agent
   development.
 - A technology partner badge is not a service. Neither is a client logo.
+- **A directory, listicle, marketplace or industry association is not a company
+  in this segment.** A site whose content is *lists of other companies* — "top
+  AI agencies in X", agency matchmaking, a members register — belongs at
+  `tier: null` however much it talks about the subject.
+- **A software product or platform sold as a subscription is not a services
+  business**, unless the site also names a distinct consulting, development or
+  training offering. Check the inclusion rule above for what this segment says
+  about product companies.
+- A large multinational vendor whose software the segment's companies *use* is
+  not itself a member of the segment.
 - Absence of evidence is evidence of absence here: the extraction step already
   read the site. If an offering is not listed above, the site did not clearly
   claim it.

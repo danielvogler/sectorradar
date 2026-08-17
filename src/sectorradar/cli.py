@@ -383,7 +383,9 @@ def run(segment: SegmentOpt, dry_run: DryRunOpt = False, verbose: VerboseOpt = F
 
             cost = extracted.usage.cost_usd + classified.usage.cost_usd
             print(f"\nLLM cost this run: USD {cost:.4f}")
-    except ConfigError as exc:
+    except (ConfigError, ValueError) as exc:
+        # ValueError reaches here from a bad source name. The contract is a
+        # readable message and exit 1, never a traceback.
         _die(str(exc))
         return
     except KeyboardInterrupt:

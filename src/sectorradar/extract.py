@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sectorradar import db, fetch
+from sectorradar import db, fetch, swiss
 from sectorradar.config import Segment, Settings
 from sectorradar.llm import LLMClient, Usage
 from sectorradar.logging import get_logger
@@ -290,7 +290,10 @@ def extract(
             headcount_est=profile.headcount_estimate,
             founded_year=profile.founded_year,
             city=profile.city,
-            canton=profile.canton,
+            # Folded to a two-letter code, or dropped. A model answers this
+            # field with whatever the site says — four languages, two
+            # registers, and occasionally somewhere that is not Swiss at all.
+            canton=swiss.canton_code(profile.canton),
             languages=",".join(profile.languages) or None,
             last_enriched=_now(),
         )
@@ -299,7 +302,7 @@ def extract(
             ("headcount_est", profile.headcount_estimate),
             ("founded_year", profile.founded_year),
             ("city", profile.city),
-            ("canton", profile.canton),
+            ("canton", swiss.canton_code(profile.canton)),
         ):
             if value is not None:
                 _record_field(
