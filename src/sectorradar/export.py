@@ -168,8 +168,17 @@ def snapshot(conn: sqlite3.Connection, segment: Segment, *, dry_run: bool = Fals
 
 
 def latest_snapshot(conn: sqlite3.Connection, segment: Segment) -> list[dict[str, Any]] | None:
+    # `id` breaks the tie, because taken_at has second precision and two
+    # snapshots within the same second are entirely ordinary — a fast run, or a
+    # test. Ordering on the timestamp alone silently returns whichever row
+    # SQLite happens to reach first.
     row = conn.execute(
-        "SELECT payload FROM snapshot WHERE segment_slug = ? ORDER BY taken_at DESC LIMIT 1",
+        """
+        SELECT payload FROM snapshot
+         WHERE segment_slug = ?
+      ORDER BY taken_at DESC, id DESC
+         LIMIT 1
+        """,
         (segment.slug,),
     ).fetchone()
     if row is None:
