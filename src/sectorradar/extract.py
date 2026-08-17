@@ -315,6 +315,11 @@ def extract(
         # Stored as a field so `only_changed` can tell whether anything moved.
         _record_field(conn, company_id, "_pages_signature", signature, primary_url, extractor)
 
+        # Commit per company. Extraction is one paid LLM call each and runs for
+        # minutes over a segment; committing once at the end would mean an
+        # interrupt throws away work that has already been paid for.
+        conn.commit()
+
         for facet, values in profile.facets.items():
             for value in values:
                 conn.execute(

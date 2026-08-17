@@ -177,6 +177,10 @@ def classify(
                     (company_id, facet, value, decision.relevance, source),
                 )
 
+        # Same reasoning as extract: one paid call per company, so commit as
+        # each lands rather than risking the lot on a clean exit.
+        conn.commit()
+
     if dry_run:
         conn.rollback()
     else:
