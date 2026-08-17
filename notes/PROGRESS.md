@@ -1,12 +1,12 @@
 # sectorradar — build progress
 
-**Last updated:** 2026-08-17T09:58:00+02:00
-**Current phase:** 1
+**Last updated:** 2026-08-17T10:10:00+02:00
+**Current phase:** 2
 **Spend so far (USD):** 0.00
 
 ## Gate status
 - [x] Phase 0 — repository scaffold & tooling
-- [ ] Phase 1 — schema, config, CLI skeleton
+- [x] Phase 1 — schema, config, CLI skeleton
 - [ ] Phase 2 — manual spine (seeds → resolve → geocode → map)
 - [ ] Phase 3 — enrichment (fetch → extract → classify → review UI)
 - [ ] Phase 4 — discovery (websearch → jobads → directories → stats)
@@ -97,7 +97,84 @@ its module lands, with no edit to the script.
 **Next:** Phase 1 — `db.py`, `models.py`, `config.py`, `logging.py`, the full
 CLI surface, and the AST import-boundary test.
 
+### 2026-08-17T10:10 — Phase 1 GREEN
+
+`db.py`, `config.py`, `models.py`, `logging.py`, the full CLI surface, the
+segment YAML and the Streamlit Home page. Commit `020aecf`.
+
+**Gate 1 command output:**
+
+```text
+$ rm -f data/radar.db && uv run sectorradar init && uv run sectorradar doctor \
+    && uv run pytest -q && echo GATE_1_PASS
+
+applied 2 migration(s) — schema is now v2
+database: data/radar.db
+
+sectorradar 0.1.0
+python      3.11.14 (darwin)
+
+contact     vogler.daniel@gmail.com
+llm         vertex / gemini-2.5-flash-lite
+search      vertex_grounding
+llm creds   present
+
+segments    agentic-ai-ch
+database    data/radar.db
+schema      v2 current
+  company        0
+  membership     0
+  candidate      0
+  offering       0
+  company_field  0
+  page           0
+
+89 passed in 0.61s
+GATE_1_PASS
+```
+
+Coverage 93.67%; `make check` prints `CHECK_PASS`.
+
+**The Streamlit page, verified properly.** The gate asks for Home showing
+"0 companies". Serving HTTP 200 does not show that — a script that raises still
+returns 200 and renders the traceback inside the page. Used
+`streamlit.testing.v1.AppTest` in `tests/test_app.py` to run the script
+headlessly and assert on rendered elements, across all three states: database
+absent (friendly panel naming `sectorradar init`), database empty
+(`metric == "0"`), database populated (counts by tier and review state). These
+tests `importorskip` streamlit, so CI, which installs the pipeline without the
+`app` extra, skips them rather than failing.
+
+**Two real bugs, both surfaced by tests written before the fix:**
+
+1. `upsert_membership` used `COALESCE(excluded.tier, membership.tier)`, so a
+   re-run of `classify` silently overwrote a tier a human had set during
+   review. At the intended scale — 200 rows reviewed by hand in about an hour —
+   that quietly discards the project's main quality lever. Reviewed rows now
+   keep their tier and rationale; relevance still refreshes because it is a
+   score, not a decision.
+
+2. `logging.configure()` built `PrintLoggerFactory(file=sys.stderr)` with
+   `cache_logger_on_first_use=True`, capturing whatever `sys.stderr` was at
+   configure time. Any later replacement of that stream left the cached logger
+   writing into a closed file — `ValueError: I/O operation on closed file` on
+   the next log line. It surfaced under the Typer test runner, but it would hit
+   equally in a daemonised process. Now routed through stdlib logging, which
+   resolves the stream at emit time. `tests/test_logging.py` pins it.
+
+**Next:** Phase 2 — the manual spine. `resolve.py` is test-first, one test per
+Swiss trap in §7, before any implementation.
+
 ## Deviations
+
+- **Added `.gitleaks.toml`.** `gitleaks detect --no-git` walks the working tree
+  as plain files, so it descended into `.venv/` and reported two findings in a
+  minified pydeck source map — high-entropy identifier strings, not
+  credentials. The config allowlists non-repository *paths* only (`.venv/`,
+  `data/`, tool caches) and no rule, pattern or repo path. Verified the guard
+  still bites by planting an `AKIA…` key in `src/` and confirming a finding.
+  §5 permits this file "only if a documented false positive needs
+  allowlisting"; this is that case.
 
 - **Spec names Exa/Brave/Tavily for search and an unspecified LLM SDK for
   extraction; I am using Vertex AI via ADC for both.** No key for any named
