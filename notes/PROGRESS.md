@@ -1,11 +1,11 @@
 # sectorradar — build progress
 
-**Last updated:** 2026-08-17T10:05:00+02:00
-**Current phase:** 0
+**Last updated:** 2026-08-17T09:58:00+02:00
+**Current phase:** 1
 **Spend so far (USD):** 0.00
 
 ## Gate status
-- [ ] Phase 0 — repository scaffold & tooling
+- [x] Phase 0 — repository scaffold & tooling
 - [ ] Phase 1 — schema, config, CLI skeleton
 - [ ] Phase 2 — manual spine (seeds → resolve → geocode → map)
 - [ ] Phase 3 — enrichment (fetch → extract → classify → review UI)
@@ -48,6 +48,55 @@ So the blocker does not apply. Both providers resolve to Vertex AI via ADC —
 for the `websearch` source. This matches the house GCP rule (models via Vertex
 with ADC, never raw API keys). Recorded under `## Deviations`.
 
+### 2026-08-17T09:56 — Phase 0 GREEN
+
+Scaffold, tooling, CI, docs and the verification harness are in. Commit
+`4878d9a`.
+
+**Gate 0 command output:**
+
+```text
+Audited 62 packages in 10ms
+All checks passed!                          # ruff check
+15 files already formatted                  # ruff format --check
+Success: no issues found in 3 source files  # mypy --strict
+3 passed in 0.07s                           # pytest
+Detect hardcoded secrets......Passed        # pre-commit run --all-files
+mypy (strict).................Passed
+GATE_0_PASS
+```
+
+**Guardrail verification (§0b) — planted each trigger, confirmed the hook fails
+and names the file, then removed it.** Three of these hooks report "no files to
+check" on a clean tree, and skipped is not verified.
+
+| Planted | Result |
+|---|---|
+| `{"type":"service_account","private_key":"x"}` in `fake-sa.json` | `no-gcp-service-account-keys` **Failed** — `fake-sa.json:1:{"type":"service_account"...` |
+| A realistic `AKIA…`-prefixed AWS key pair in `fake-creds.txt` (key redacted here — see below) | `gitleaks` **Failed** — 2 findings (`aws-access-token`, `generic-api-key`), both naming `fake-creds.txt` |
+| `git commit ... -m "Co-Authored-By: Claude <noreply@anthropic.com>"` | `no-agent-coauthors` **Failed** — `.git/COMMIT_EDITMSG:3:Co-Authored-By: Claude ...`; commit exit 1, HEAD unchanged |
+| `git add -f data/x.txt` | `no-collected-data` **Failed** — printed the DATA.md pointer and `data/x.txt` |
+
+Worth recording: my first gitleaks probe used `AKIAIOSFODNN7EXAMPLE` and
+**passed**, because that is AWS's own documentation key and gitleaks allowlists
+it. Had I stopped there I would have logged a working guardrail on the strength
+of a test that could not fail. Re-ran with a non-example key, which fired.
+
+Then a second, better lesson: writing that working probe key into *this file*
+made the commit fail, because gitleaks flagged `notes/PROGRESS.md:76` — it
+cannot tell a documented probe from a real leak, and should not try. The key is
+redacted above. The tempting fix, an allowlist entry in `.gitleaks.toml`, would
+have punched a permanent hole in the guard to record a one-off test.
+
+`make verify` runs and correctly reports 6 SKIPs with a non-zero exit at this
+stage. Its phase guards key off the presence of each phase's code
+(`src/sectorradar/resolve.py`, `stats.py`, `segments/genai-training-ch.yaml`,
+`docs/architecture.md`, …), so a gate flips from SKIP to a hard check the moment
+its module lands, with no edit to the script.
+
+**Next:** Phase 1 — `db.py`, `models.py`, `config.py`, `logging.py`, the full
+CLI surface, and the AST import-boundary test.
+
 ## Deviations
 
 - **Spec names Exa/Brave/Tavily for search and an unspecified LLM SDK for
@@ -58,6 +107,20 @@ with ADC, never raw API keys). Recorded under `## Deviations`.
   one-interface abstraction the spec asks for in `sources/websearch.py`, so
   adding Exa later is a new implementation of an existing protocol, not a
   refactor.
+
+- **`check-added-large-files` excludes `uv.lock`.** The lockfile is 547 KB,
+  over the spec's 512 KB limit, and must be committed. Excluding it by name
+  keeps the guard tight for every other file rather than raising the global
+  ceiling to accommodate one known-good generated file.
+
+- **Ruff excludes `notes/`.** Ruff 0.16 formats Python code blocks inside
+  Markdown, and would rewrite the embedded snippets in the handoff spec. That
+  document is a fixed input and stays byte-stable.
+
+- **`make verify` delegates to `scripts/verify.sh`.** The gate logic needs one
+  shell process to count SKIPs across gates; the macOS system make is GNU Make
+  3.81, which predates `.ONESHELL`. The Makefile target is a one-liner pointing
+  at the script, so the checks are still read in one place.
 
 ## Open items for the owner
 
