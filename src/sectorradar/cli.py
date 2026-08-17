@@ -111,6 +111,17 @@ def _setup(slug: str, *, verbose: bool) -> tuple[Segment, Settings]:
     if not settings.db_path.exists():
         _die(f"no database at {settings.db_path} — run `sectorradar init` first")
 
+    # A database created by an older build is missing columns this one writes
+    # to, and the failure without this check is an OperationalError traceback
+    # from somewhere deep in a stage, which tells the user nothing actionable.
+    with db.connect(settings.db_path, read_only=True) as conn:
+        version = db.current_version(conn)
+    if version < db.SCHEMA_VERSION:
+        _die(
+            f"database schema is v{version} but this build expects "
+            f"v{db.SCHEMA_VERSION} — run `sectorradar init` to migrate"
+        )
+
     return segment, settings
 
 

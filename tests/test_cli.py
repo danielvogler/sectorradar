@@ -155,3 +155,29 @@ def test_a_bad_log_level_is_rejected_at_startup(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("SECTORRADAR_LOG_LEVEL", "chatty")
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code != EXIT_OK
+
+
+def test_a_stale_schema_is_reported_rather_than_crashing(tmp_path: Path) -> None:
+    """A database from an older build must not surface as an OperationalError.
+
+    Real failure: adding a column and running a stage against the existing
+    database produced a traceback from deep inside geocode saying
+    "no such column: geocode_status", which tells the user nothing they can act
+    on. The fix they need is `sectorradar init`.
+    """
+    import sqlite3
+
+    from sectorradar import db
+
+    path = tmp_path / "radar.db"
+    db.init_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("DELETE FROM schema_version WHERE version = ?", (db.SCHEMA_VERSION,))
+        conn.commit()
+
+    result = runner.invoke(app, ["geocode", "--segment", "agentic-ai-ch"])
+
+    assert result.exit_code == EXIT_FAILURE
+    assert "sectorradar init" in result.output
+    assert "schema" in result.output.lower()
+    assert "Traceback" not in result.output
