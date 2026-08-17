@@ -1,13 +1,26 @@
-"""Where the companies in this segment actually are."""
+"""Where the companies in this segment actually are.
+
+Uses folium's marker clustering rather than a flat scatter layer, because the
+underlying data is *genuinely* stacked: geocoding a company that gave only a
+city places it at that city's centre, so forty-nine firms in Zürich share one
+exact coordinate. A scatter layer cannot separate identical points at any zoom
+— the pixels are the same pixels.
+
+Clustering answers that directly. Overlapping markers collapse into a numbered
+circle, the circle splits into smaller ones as you zoom, and markers that are
+still identical at maximum zoom fan out on click ("spiderfy") so each one is
+reachable.
+"""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-import pydeck as pdk
+import folium
 import streamlit as st
-from pydeck.types import String
+from folium.plugins import MarkerCluster
+from streamlit_folium import st_folium
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -15,34 +28,32 @@ from lib import filters, queries
 
 st.set_page_config(page_title="Map · sectorradar", page_icon="🗺️", layout="wide")
 
-# Roughly the centre of Switzerland, zoomed to fit the country.
-SWITZERLAND = pdk.ViewState(latitude=46.82, longitude=8.23, zoom=7.0)
+SWITZERLAND = (46.82, 8.23)
+INITIAL_ZOOM = 8
 
-#: A light Carto basemap, which needs no API token. Without a basemap
-#: (`map_style=None`) the canvas is a flat grey rectangle, so the markers float
-#: with no coastline, lakes or city names to place them against — which makes
-#: the map unreadable however correct the coordinates are.
-BASEMAP = "light"
+#: Marker colour by tier. Folium's Icon takes named colours, not RGB.
+TIER_COLOUR: dict[int, str] = {1: "red", 2: "orange", 3: "blue", 4: "gray"}
+UNTIERED_COLOUR = "lightgray"
 
 
-def radius_for(headcount: object) -> float:
-    """Marker size in *pixels*, by headcount, on a gentle curve.
+def popup_html(row: dict[str, object], tags: list[str]) -> str:
+    """The card shown when a marker is clicked."""
+    name = str(row["canonical_name"])
+    domain = str(row["domain"])
+    tier = f"Tier {row['tier']}" if row["tier"] else "unclassified"
+    where = ", ".join(str(v) for v in (row.get("city"), row.get("canton")) if v) or "—"
+    does = ", ".join(tags[:5]) or "—"
+    summary = str(row.get("one_liner") or "")[:220]
 
-    Pixels, not metres. ScatterplotLayer measures radius in metres by default,
-    so a marker covers a fixed patch of ground and swells as you zoom — two
-    companies in one city stay a single blob exactly when you want them apart.
-
-    The units have to be passed as ``pydeck.types.String``. A bare Python
-    string is compiled into a data accessor (``"@@=pixels"``), deck.gl cannot
-    resolve it, and it silently falls back to metres — which is how this looked
-    fixed while still being broken.
-
-    The curve is gentle because linear scaling lets one 400-person integrator
-    swamp thirty ten-person consultancies, the opposite of what this map is for.
-    """
-    if not headcount:
-        return 5.0
-    return round(min(4.0 + 1.5 * (float(headcount) ** 0.5), 20.0), 1)
+    return (
+        f"<div style='font-family:sans-serif;font-size:13px;min-width:220px'>"
+        f"<b>{name}</b><br>"
+        f"<span style='color:#666'>{tier} · {where}</span><br>"
+        f"<a href='https://{domain}' target='_blank'>{domain}</a>"
+        f"<p style='margin:6px 0'>{summary}</p>"
+        f"<span style='color:#444'><i>{does}</i></span>"
+        f"</div>"
+    )
 
 
 def main() -> None:
@@ -62,61 +73,70 @@ def main() -> None:
 
     if not rows:
         st.info("No companies match these filters, or none have been geocoded yet.", icon="🔍")
-    else:
-        tags = queries.tags_by_company(segment)
-        points = [
-            {
-                "name": r["canonical_name"],
-                "domain": r["domain"],
-                "where": ", ".join(str(v) for v in (r["city"], r["canton"]) if v) or "—",
-                "tier": f"Tier {r['tier']}" if r["tier"] else "unclassified",
-                "does": ", ".join(tags.get(int(r["id"]), [])[:4]) or "—",
-                "lat": r["lat"],
-                "lon": r["lon"],
-                "colour": filters.colour_for(r["tier"]),
-                "radius": radius_for(r["headcount_est"]),
-            }
-            for r in rows
-        ]
+        return
 
-        st.pydeck_chart(
-            pdk.Deck(
-                map_style=BASEMAP,
-                initial_view_state=SWITZERLAND,
-                layers=[
-                    pdk.Layer(
-                        "ScatterplotLayer",
-                        data=points,
-                        get_position="[lon, lat]",
-                        get_fill_color="colour",
-                        get_radius="radius",
-                        # Literal, not an accessor — see radius_for().
-                        radius_units=String("pixels"),
-                        radius_min_pixels=4,
-                        radius_max_pixels=24,
-                        stroked=True,
-                        get_line_color=[255, 255, 255, 220],
-                        line_width_min_pixels=1,
-                        pickable=True,
-                    )
-                ],
-                tooltip={"text": "{name} — {tier}\n{where}\n{does}\n{domain}"},
+    tags = queries.tags_by_company(segment)
+
+    fmap = folium.Map(location=SWITZERLAND, zoom_start=INITIAL_ZOOM, tiles="cartodbpositron")
+    cluster = MarkerCluster(
+        # Split clusters right down to street level, and fan out anything still
+        # sharing a coordinate at the deepest zoom.
+        options={
+            "maxClusterRadius": 45,
+            "disableClusteringAtZoom": 15,
+            "spiderfyOnMaxZoom": True,
+            "showCoverageOnHover": False,
+        }
+    ).add_to(fmap)
+
+    for row in rows:
+        tier = row["tier"]
+        folium.Marker(
+            location=[float(row["lat"]), float(row["lon"])],  # type: ignore[arg-type]
+            popup=folium.Popup(popup_html(row, tags.get(int(row["id"]), [])), max_width=320),  # type: ignore[call-overload]
+            tooltip=str(row["canonical_name"]),
+            icon=folium.Icon(
+                color=TIER_COLOUR.get(int(tier), UNTIERED_COLOUR) if tier else UNTIERED_COLOUR,
+                icon="briefcase",
+                prefix="fa",
+            ),
+        ).add_to(cluster)
+
+    st_folium(fmap, width=None, height=620, returned_objects=[])
+
+    legend = " · ".join(f":{c}[●] Tier {t}" for t, c in ((1, "red"), (2, "orange"), (3, "blue")))
+    st.caption(f"{len(rows)} companies. {legend}")
+    st.caption(
+        "Numbers are clusters — zoom in and they split. At full zoom, companies "
+        "sharing an address fan out when you click the cluster."
+    )
+
+    stacked = queries.stacked_points(segment)
+    if stacked:
+        worst = stacked[0]
+        with st.expander(
+            f"📍 {sum(int(s['n']) for s in stacked)} companies sit on a city centre, not their own address"
+        ):
+            st.caption(
+                "A company whose website gives only a city is placed at that city's "
+                "centre, so they stack. Re-running `sectorradar extract` picks up "
+                "street addresses where a site publishes one — usually in the footer "
+                "or the imprint."
             )
-        )
-
-        legend = " · ".join(
-            f":{c}[●] Tier {t}" for t, c in ((1, "red"), (2, "orange"), (3, "blue"), (4, "grey"))
-        )
-        st.caption(f"{len(points)} companies. {legend}. Marker size is headcount estimate.")
-        st.caption("Several companies share each city — zoom in and they separate.")
+            st.dataframe(
+                [{"city": s["city"], "companies on one point": s["n"]} for s in stacked],
+                width="stretch",
+                hide_index=True,
+            )
+            st.caption(f"Largest stack: {worst['n']} companies in {worst['city']}.")
 
     missing = queries.without_coordinates(segment)
     if missing:
-        with st.expander(f"⚠️ {len(missing)} companies have no coordinates and are not on the map"):
+        with st.expander(f"⚠️ {len(missing)} companies have no coordinates and are not shown"):
             st.caption(
                 "Their site gave no address, or the address could not be placed in "
-                "Switzerland. They are listed rather than dropped, so the map is not "
-                "quietly missing a third of the market."
+                "Switzerland. Listed rather than dropped, so the map is not quietly "
+                "missing part of the market."
             )
             st.dataframe(
                 missing,

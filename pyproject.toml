@@ -50,7 +50,13 @@ dependencies = [
 [project.optional-dependencies]
 # The Streamlit layer is deliberately NOT a runtime dependency of the pipeline.
 # `src/` must never import streamlit; tests/test_architecture.py enforces this.
-app = ["streamlit>=1.40", "pandas>=2.2", "pydeck>=0.9"]
+app = [
+    "streamlit>=1.40",
+    "pandas>=2.2",
+    "pydeck>=0.9",
+    "folium>=0.20.0",
+    "streamlit-folium>=0.27.4",
+]
 
 [project.urls]
 Homepage = "https://github.com/danielvogler/sectorradar"

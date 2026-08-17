@@ -289,6 +289,8 @@ def extract(
             legal_name=profile.legal_name,
             headcount_est=profile.headcount_estimate,
             founded_year=profile.founded_year,
+            street=profile.street,
+            postal_code=profile.postal_code,
             city=swiss.canonical_city(profile.city),
             # Folded to a two-letter code, or dropped. A model answers this
             # field with whatever the site says — four languages, two
@@ -299,6 +301,8 @@ def extract(
         )
 
         for name, value in (
+            ("street", profile.street),
+            ("postal_code", profile.postal_code),
             ("headcount_est", profile.headcount_estimate),
             ("founded_year", profile.founded_year),
             ("city", swiss.canonical_city(profile.city)),

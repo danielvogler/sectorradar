@@ -43,6 +43,25 @@ site. "We build LLM agents for enterprise clients" is an offering. "AI is
 transforming business" is not. A technology they use internally is not an
 offering. Label each one in three or four words.
 
+### The postal address
+
+Record the company's own street address as precisely as the site gives it,
+usually from the footer, an imprint, or a contact page:
+
+- `street` — street name and number, e.g. "Bahnhofstrasse 12"
+- `postal_code` — the four-digit code, e.g. "8001"
+- `city` — the town, e.g. "Zürich"
+- `canton` — the two-letter code if stated, e.g. "ZH"
+
+Give the company's *own* office. Not a client's address, not a conference
+venue, not the address of a parent company in another country. If several
+offices are listed, use the one presented as the headquarters, and prefer a
+Swiss one where there is a choice.
+
+Without a street, every company in a city ends up on the same map pin, so this
+is worth reading the footer carefully for. But an invented street is far worse
+than a missing one — if the site does not give it, leave it null.
+
 ### Facets
 
 Assign values only within these facets. You may use a value not listed if the

@@ -59,6 +59,12 @@ class CompanyProfile(Frozen):
     headcount_estimate: int | None = Field(default=None, ge=1, le=1_000_000)
     founded_year: int | None = Field(default=None, ge=1800, le=2100)
     languages: tuple[str, ...] = ()
+    # The postal address, as specifically as the site gives it. Without a
+    # street every company in a city geocodes to the same point — 49 firms
+    # landed on one coordinate in Zürich — and no amount of zooming separates
+    # markers that are genuinely identical.
+    street: str | None = None
+    postal_code: str | None = None
     city: str | None = None
     canton: str | None = None
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
