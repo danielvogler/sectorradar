@@ -1,0 +1,108 @@
+---
+/**
+ * One page.
+ *
+ * Its only jobs are to find the exported dataset, set the document head, and
+ * hand the data to `Dashboard`. Everything else lives in components, because
+ * a nullable dataset threaded through 300 lines of template is how a type
+ * error ends up reported as a syntax error at the closing tag.
+ *
+ * The data is a glob rather than a named import: a segment is one YAML file,
+ * and pointing the tool at a different market must not require editing the
+ * front end. `import.meta.glob` resolves at build time, so the document is
+ * still compiled into the page and nothing is fetched at runtime.
+ */
+import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import '../styles/tokens.css';
+import Wordmark from '../components/Wordmark.astro';
+import Hero from '../components/Hero.astro';
+import Dashboard from '../components/Dashboard.astro';
+import type { Dataset } from '../lib/types';
+
+const exported = import.meta.glob<{ default: Dataset }>('../data/*.web.json', { eager: true });
+const found = Object.entries(exported).sort(([a], [b]) => a.localeCompare(b));
+
+// With several exports present, SECTORRADAR_SEGMENT picks one; otherwise the
+// first by name. Building each segment as its own page is the better answer if
+// that ever matters.
+const wanted = import.meta.env.SECTORRADAR_SEGMENT;
+const chosen =
+  (wanted && found.find(([path]) => path.endsWith(`/${wanted}.web.json`))) ?? found.at(0);
+
+const data: Dataset | null = chosen ? chosen[1].default : null;
+const loadError = data
+  ? ''
+  : 'No exported data found. Run `make data` to generate it from the database.';
+
+const companies = data?.companies ?? [];
+const excluded = companies.filter((c) => c.tier === null).length;
+const inSegment = companies.length - excluded;
+const segmentName = data?.segment?.name ?? 'sectorradar';
+
+// One place naming every section, so the nav, the anchors and the order can
+// never drift apart.
+const SECTIONS = [
+  { id: 'companies', label: 'Companies' },
+  { id: 'market', label: 'Market' },
+  { id: 'stack', label: 'Stack' },
+  { id: 'search', label: 'Search' },
+  { id: 'method', label: 'Method' },
+];
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- The data is baked into this file, so a cached copy is stale data
+         rather than a stale wrapper. Assets are content-hashed and can cache
+         forever; the page itself must not. -->
+    <meta http-equiv="cache-control" content="no-cache" />
+    <title>{segmentName} · sectorradar</title>
+    <meta
+      name="description"
+      content={`A map of ${segmentName}, built from their own websites, with a quote and a link behind every detail.`}
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&display=swap"
+    />
+  </head>
+  <body>
+    <header class="top" id="top">
+      <div class="wrap">
+        <a href="#top" aria-label="sectorradar, back to top"><Wordmark /></a>
+        <nav>
+          {SECTIONS.map((s) => <a href={`#${s.id}`}>{s.label}</a>)}
+        </nav>
+      </div>
+    </header>
+
+    {data && (
+      <Hero
+        segment={data.segment}
+        examined={companies.length}
+        inSegment={inSegment}
+        collected={data.collected_at ?? ''}
+        generated={data.generated_at}
+      />
+    )}
+
+    <main class="wrap">
+      {loadError && <p class="muted">{loadError}</p>}
+
+      {data && <Dashboard data={data} />}
+    </main>
+
+    <dialog id="detail">
+      <button class="close" id="detail-close" aria-label="Close">&times;</button>
+      <div class="sheet" id="detail-body"></div>
+    </dialog>
+
+    <script is:inline define:vars={{ companies }}>
+      window.__COMPANIES__ = companies;
+    </script>
+    <script src="../lib/app.ts"></script>
+  </body>
+</html>

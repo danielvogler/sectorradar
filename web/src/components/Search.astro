@@ -1,0 +1,127 @@
+---
+/**
+ * What the most findable sites do that the least findable ones do not.
+ *
+ * Only the two ends. The middle quartiles were shown for completeness and cost
+ * the panel half the page: they interpolate, they surprise nobody, and reading
+ * four columns to find one contrast is work the reader should not have to do.
+ * The gap between the extremes *is* the finding, so it is the column with the
+ * emphasis on it.
+ *
+ * Everything here is measured from the markup, so it has a right answer and no
+ * model was asked to guess at it. It covers what a site controls in its own
+ * HTML — not backlinks, authority or actual rankings, which need an index this
+ * tool does not have.
+ */
+import type { SearchBenchmark } from '../lib/types';
+
+interface Props {
+  search: SearchBenchmark[];
+}
+const { search } = Astro.props;
+
+const top = search.at(0);
+const bottom = search.at(-1);
+
+const ROWS: { label: string; key: keyof SearchBenchmark; note: string }[] = [
+  { label: 'Structured data', key: 'structured_data', note: 'schema.org markup' },
+  { label: 'FAQ markup', key: 'faq_schema', note: 'wins the answer box' },
+  { label: 'LocalBusiness', key: 'local_business', note: 'address as data' },
+  { label: 'hreflang', key: 'hreflang', note: 'translations tagged' },
+  { label: 'Open Graph', key: 'open_graph', note: 'shared links render' },
+];
+
+const pct = (v: number) => Math.round(v * 100);
+const rows =
+  top && bottom
+    ? ROWS.map((r) => {
+        const hi = pct(top[r.key] as number);
+        const lo = pct(bottom[r.key] as number);
+        return { ...r, hi, lo, gap: hi - lo };
+      }).sort((a, b) => b.gap - a.gap)
+    : [];
+---
+
+{
+  top && bottom && (
+    <div class="panel">
+      <div class="head">
+        <h2>Why some of them get found</h2>
+        <span class="muted">most findable quarter vs least</span>
+      </div>
+
+      <div class="body">
+        <table class="grid slim">
+          <thead>
+            <tr>
+              <th>the site publishes</th>
+              <th class="num">top</th>
+              <th class="num">bottom</th>
+              <th class="num">gap</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr>
+                <td>
+                  {row.label}
+                  <span class="muted"> · {row.note}</span>
+                </td>
+                <td class="num strong">{row.hi}%</td>
+                <td class="num dim">{row.lo}%</td>
+                <td class="num">
+                  <span class="gap" style={`--g:${Math.max(2, row.gap)}%`}>+{row.gap}</span>
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td>
+                Words per page
+                <span class="muted"> · thin pages rarely rank</span>
+              </td>
+              <td class="num strong">{top.median_words}</td>
+              <td class="num dim">{bottom.median_words}</td>
+              <td class="num" />
+            </tr>
+          </tbody>
+        </table>
+
+        <p class="muted" style="margin:.7rem 0 0">
+          Open any company for its own score and the specific things its site is
+          missing. Figures exclude companies marked as yours.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+<style>
+  table.slim td,
+  table.slim th {
+    padding: 0.34rem 0.45rem;
+  }
+  table.slim .strong {
+    font-weight: 700;
+  }
+  table.slim .dim {
+    color: var(--faint);
+  }
+  /* The gap is the point of the table, so it gets the only ink that is not a
+     number: a bar behind the figure, scaled to the difference. */
+  .gap {
+    position: relative;
+    display: inline-block;
+    padding: 0 0.3rem;
+    font-weight: 600;
+    color: var(--accent-ink);
+  }
+  .gap::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--g);
+    background: var(--accent-wash);
+    border-radius: 2px;
+    z-index: -1;
+  }
+</style>

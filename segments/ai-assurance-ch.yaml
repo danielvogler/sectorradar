@@ -1,0 +1,215 @@
+---
+# AI assurance, evaluation and model risk in Switzerland.
+#
+# The second worked example in this repository, and a deliberately harder one
+# than `agentic-ai-ch`. That segment asks "who builds AI systems", which most
+# firms answer loudly. This one asks "who checks them", which is a narrower
+# claim and much easier to blur — every consultancy that has put "responsible
+# AI" on a slide will look like a candidate until the boundary stops them.
+#
+# It is runnable as it stands:
+#
+#     uv run sectorradar run --segment ai-assurance-ch
+#     make serve SEGMENT=ai-assurance-ch
+#
+# Read segments/AGENTS.md before changing it.
+slug: ai-assurance-ch
+name: AI assurance, evaluation and model risk, Switzerland
+
+geo:
+  country: CH
+  cantons: null
+
+# Whoever runs this is part of the market too. Domains listed here stay in the
+# dataset and stay out of every baseline. Left empty on purpose: which
+# companies are yours is not example material — put them in
+# `ai-assurance-ch.local.yaml`, which is gitignored and merged over this file.
+own_domains: []
+
+# Injected verbatim into the classifier prompt, and the most important text in
+# the file.
+#
+# The exclusions carry this segment. "Checks AI systems" and "builds AI systems
+# carefully" are a hair apart in marketing copy and worlds apart in what you
+# are buying, so the boundary has to say which side it wants and why. The test
+# to apply: does the engagement produce something a third party could inspect —
+# a report, a finding, a sign-off — or does it produce a system?
+inclusion: >
+  Include a company if it offers, as a named service on its own website,
+  independent evaluation, testing, auditing or assurance of AI systems:
+  model validation, LLM red-teaming or adversarial testing, bias, fairness
+  and robustness assessment, AI monitoring and drift detection, or
+  EU AI Act and FINMA model-risk readiness work.
+  Include governance and compliance consultancies whose AI work produces an
+  assessable artefact — an audit, a report, a control framework, a sign-off.
+  Exclude companies that only build or integrate AI systems, however
+  carefully, and however much they mention responsible AI.
+  Exclude general cybersecurity and penetration-testing firms with no
+  AI-specific testing service.
+  Exclude academic groups, research institutes and standards bodies.
+  Exclude individual freelancers with no registered company.
+  Exclude companies with no Swiss presence.
+
+tiers:
+  1: "AI assurance, evaluation or model risk is the primary offering"
+  2: "Audit, risk or consulting firm with a named AI assurance practice"
+  3: "Broader risk, compliance or security firm with an AI service line"
+  4: "Training or certification provider only"
+
+enrich_tiers: [1, 2]
+
+# Facets are fixed and so are their values: the classifier picks from these and
+# may not invent either.
+#
+# `service_type` is written as value → evidence words. A tag survives only if
+# its words appear on the page, so the words decide whether a table has
+# anything in it. Swiss assurance work is sold in German, French and English
+# and the vocabulary differs sharply between them — `red_teaming` will never
+# match a page offering *Angriffssimulation*.
+facets:
+  service_type:
+    # Testing what a system does
+    model_validation: ["modellvalidierung", "model validation", "validierung", "backtesting"]
+    llm_evaluation: ["llm evaluation", "modellbewertung", "benchmark", "eval", "leistungsmessung"]
+    red_teaming: ["red team", "red-teaming", "angriffssimulation", "adversarial", "jailbreak"]
+    bias_testing: ["bias", "fairness", "diskriminierung", "équité", "verzerrung", "gleichbehandlung"]
+    robustness: ["robustheit", "robustness", "stresstest", "stress test", "belastungstest"]
+    explainability: ["explainab", "erklärbarkeit", "interpretier", "nachvollziehbarkeit", "xai"]
+    # Telling somebody about it afterwards
+    audit: ["audit", "prüfung", "revision", "zertifizierung", "attestation", "testat"]
+    assurance_report: ["assurance", "prüfbericht", "gutachten", "rapport", "bescheinigung"]
+    # Rules and how to meet them
+    ai_act: ["ai act", "ki-verordnung", "eu ai act", "konformität", "conformité"]
+    model_risk: ["model risk", "modellrisiko", "finma", "risikomanagement", "srp"]
+    governance: ["governance", "richtlinie", "policy", "kontrollrahmen", "aufsicht"]
+    data_protection: ["datenschutz", "dsgvo", "revdsg", "privacy", "protection des données"]
+    # Keeping an eye on it
+    monitoring: ["monitoring", "überwachung", "drift", "observability", "laufende kontrolle"]
+    incident_review: ["incident", "vorfall", "post-mortem", "ursachenanalyse", "root cause"]
+    # Teaching it
+    training: ["schulung", "weiterbildung", "training", "formation", "zertifikatslehrgang"]
+
+  # Evidence words on every facet, not only the interesting one. Bare lists
+  # look harmless and are not: a value survives only if its words appear on the
+  # page, so an undeclared vocabulary is a silently empty table.
+  delivery_model:
+    project: ["projekt", "mandat", "einmalig", "engagement"]
+    retainer: ["retainer", "laufend", "dauerauftrag", "rahmenvertrag"]
+    audit: ["audit", "prüfung", "revision", "assessment"]
+    certification: ["zertifizierung", "zertifikat", "akkreditierung", "attestation"]
+    training: ["schulung", "weiterbildung", "training", "formation"]
+    managed: ["managed", "betrieb", "operations", "betreuung"]
+
+  # Aligned with sectorradar.industries so a vertical tag and a case study's
+  # sector are the same word and can be counted together. Kept to the sectors
+  # that actually buy assurance — a regulated buyer is the whole market here.
+  # Aligned with sectorradar.industries so a vertical tag and a case study's
+  # sector are the same word and can be counted together. Kept to the sectors
+  # that actually buy assurance — a regulated buyer is the whole market here.
+  vertical:
+    finance: ["bank", "finanz", "banque", "vermögensverwaltung", "kreditinstitut"]
+    insurance: ["versicherung", "assurance", "rückversicherung", "vorsorge"]
+    pharma: ["pharma", "biotech", "arzneimittel", "life science"]
+    healthcare: ["gesundheit", "spital", "klinik", "medizin", "santé"]
+    public_sector: ["behörde", "verwaltung", "kanton", "bund", "gemeinde", "öffentlich"]
+    industrial: ["industrie", "produktion", "fertigung", "maschinenbau"]
+    energy: ["energie", "strom", "versorger", "netzbetreiber"]
+    telecom: ["telekom", "telecom", "netzbetreiber", "mobilfunk"]
+    legal: ["kanzlei", "recht", "anwalt", "juristisch"]
+    technology: ["software", "it-dienstleister", "technologie", "saas"]
+
+  # Tools named on the page. These are product names, so the value and the
+  # evidence word mostly coincide — but spelling varies and the fallback is
+  # exact, so they are written out rather than left to chance.
+  tech:
+    mlflow: ["mlflow"]
+    weights_biases: ["weights & biases", "weights and biases", "wandb", "w&b"]
+    giskard: ["giskard"]
+    deepchecks: ["deepchecks", "deep checks"]
+    evidently: ["evidently", "evidently ai"]
+    langfuse: ["langfuse"]
+    promptfoo: ["promptfoo"]
+    garak: ["garak"]
+    iso42001: ["iso 42001", "iso42001", "iso/iec 42001"]
+    nist_ai_rmf: ["nist ai rmf", "ai risk management framework", "nist ai"]
+    custom: ["eigenentwicklung", "in-house", "proprietär", "custom"]
+
+sources:
+  # Empty on purpose. A list of specific firms is a research artefact, not a
+  # market definition — the least reusable thing in this file and the most
+  # personal. Yours go in `ai-assurance-ch.local.yaml`; note that lists replace
+  # wholesale, so that block must be complete.
+  seeds:
+    enabled: true
+    urls: []
+
+  websearch:
+    enabled: true
+    # Three languages, because Swiss professional services are sold in three
+    # and a German-only list silently misses Romandie and Ticino — the result
+    # still looks like a full dataset, which is what makes it dangerous.
+    queries:
+      # German — the regulated-buyer vocabulary
+      - "KI Audit Schweiz Unternehmen"
+      - "Modellvalidierung Bank Schweiz Beratung"
+      - "KI Governance Beratung Schweiz"
+      - "Modellrisiko FINMA Beratung"
+      - "KI Risikomanagement Schweiz Anbieter"
+      - "EU AI Act Umsetzung Beratung Schweiz"
+      - "KI Verordnung Konformität Schweiz Beratung"
+      - "algorithmische Fairness Prüfung Schweiz"
+      - "KI Zertifizierung ISO 42001 Schweiz"
+      - "Datenschutz Folgenabschätzung KI Schweiz"
+      # French
+      - "audit intelligence artificielle Suisse"
+      - "gouvernance IA conseil Genève"
+      - "conformité IA entreprises Suisse romande"
+      - "validation de modèles banque Suisse"
+      # English — how international buyers and Zurich finance search
+      - "AI assurance Switzerland consulting"
+      - "AI audit firm Switzerland"
+      - "model risk management Zurich consulting"
+      - "LLM red teaming Switzerland"
+      - "AI governance advisory Swiss bank"
+      - "responsible AI audit Basel"
+      - "machine learning model validation Swiss insurer"
+      - "EU AI Act readiness Switzerland consultancy"
+      # By city, which surfaces the smaller firms national queries miss
+      - "KI Compliance Beratung Bern"
+      - "KI Audit Basel Unternehmen"
+      - "AI risk consulting Zug"
+      - "consulenza rischio intelligenza artificiale Svizzera"
+      # Channels that find firms before they market themselves
+      - "Schweizer Firmen AI Assurance Stellenangebot"
+      - "ISO 42001 Lead Auditor Schweiz"
+      - "Swiss Digital Initiative trustworthy AI members"
+
+  jobads:
+    enabled: true
+    keywords: ["AI Assurance", "Model Validation", "AI Risk", "AI Auditor", "Model Risk"]
+
+  # High recall, poor precision. Candidates only, never an automatic include.
+  lindas:
+    enabled: true
+    purpose_terms:
+      - "Künstliche Intelligenz"
+      - "Revision"
+      - "Risikomanagement"
+      - "Wirtschaftsprüfung"
+      - "Zertifizierung"
+      - "intelligence artificielle"
+    note: "Registry purpose text rarely names AI assurance directly; expect noise."
+
+  registry_lookup:
+    enabled: true
+    max_lookups: 120
+
+# Recall is measured against this on every run, and it is the only number that
+# says whether discovery works.
+#
+# Empty here, and it should be the first thing you fill in locally. A gold set
+# is worth most when it comes from knowledge the tool does not have — the firm
+# a client mentioned considering, the one you lost a mandate to. Keep it mostly
+# separate from `seeds`: a gold set drawn from the seed list measures the seed
+# list, which is why `sectorradar stats` reports "reached unaided" as well.
+gold_set: []

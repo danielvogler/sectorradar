@@ -1,0 +1,145 @@
+---
+/**
+ * What the market builds with, and where it runs.
+ *
+ * One panel with columns inside it, not six panels in a grid. As separate
+ * cards they had wildly different heights — four hosting models beside
+ * fourteen technologies — so the row broke into a ragged staircase with gaps
+ * nobody could read past. These are facets of one answer and they belong in
+ * one frame.
+ *
+ * Which columns appear is the caller's call. The grouping is editorial: a
+ * training format is a way of delivering a service, not a thing anybody
+ * builds with, and it reads as a mistake sitting beside a list of frameworks.
+ */
+import type { Count } from '../lib/types';
+
+interface Props {
+  stack: Record<string, Count[]>;
+  compared: number;
+  title: string;
+  /** Which columns to render, in order. */
+  keys: string[];
+}
+const { stack, compared, title, keys } = Astro.props;
+
+//: Every column this component knows how to draw. Which of them appear is the
+//: caller's decision, because the grouping is editorial rather than technical:
+//: `workshop_formats` is a way of delivering a service and belongs beside what
+//: firms sell, not beside the frameworks they build on.
+const COLUMNS: Record<string, { title: string; blurb: string; limit: number }> = {
+  hosting: { title: 'Where it runs', blurb: 'cloud, on-premises, Swiss-hosted', limit: 7 },
+  cloud_providers: { title: 'Clouds named', blurb: 'a procurement constraint', limit: 7 },
+  technologies: { title: 'Built with', blurb: 'frameworks and tools named', limit: 12 },
+  certifications: { title: 'Certified in', blurb: 'badges the site displays', limit: 7 },
+  workshop_formats: { title: 'Training formats', blurb: 'how teaching is delivered', limit: 8 },
+  languages: { title: 'Published in', blurb: 'how far the site reaches', limit: 5 },
+};
+
+const columns = keys
+  .filter((k) => COLUMNS[k])
+  .map((k) => ({ key: k, ...COLUMNS[k], rows: (stack?.[k] ?? []).slice(0, COLUMNS[k].limit) }))
+  .filter((c) => c.rows.length > 0);
+---
+
+<div class="panel">
+  <div class="head">
+    <h2>{title}</h2>
+    <span class="muted">share of {compared} companies compared</span>
+  </div>
+
+  {
+    columns.length === 0 ? (
+      <div class="body">
+        <p class="muted">
+          Not recorded yet. Technologies, clouds and hosting come from the
+          extraction pass — run <code>sectorradar extract</code>, then{' '}
+          <code>make data</code>.
+        </p>
+      </div>
+    ) : (
+      <div class="stack-grid">
+        {columns.map((column) => {
+          const max = Math.max(1, ...column.rows.map((r) => r.n));
+          return (
+            <section class="stack-col">
+              <h3>{column.title}</h3>
+              <p class="muted">{column.blurb}</p>
+              <ul>
+                {column.rows.map((row) => (
+                  <li>
+                    <span class="k">{row.label.replace(/_/g, ' ')}</span>
+                    <span class="meter" aria-hidden="true">
+                      <span style={`width:${(row.n / max) * 100}%`} />
+                    </span>
+                    <span class="n tabular">{row.n}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+    )
+  }
+</div>
+
+<style>
+  /* Columns of equal width in one frame, divided by hairlines rather than by
+     gaps. Ragged column heights then read as columns of different lengths,
+     which is fine, instead of as cards that failed to line up. */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  }
+  .stack-col {
+    padding: var(--s-4);
+    border-right: 1px solid var(--hair-2);
+    border-bottom: 1px solid var(--hair-2);
+  }
+  .stack-col h3 {
+    font-size: var(--t-small);
+    font-weight: 600;
+  }
+  .stack-col > p {
+    margin: 0.15rem 0 var(--s-3);
+    font-size: var(--t-micro);
+  }
+  .stack-col ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.3rem;
+  }
+  .stack-col li {
+    display: grid;
+    grid-template-columns: 1fr 2.6rem 1.6rem;
+    gap: var(--s-2);
+    align-items: center;
+    font-size: var(--t-small);
+  }
+  .stack-col .k {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink-2);
+  }
+  .stack-col .meter {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--sunken);
+    overflow: hidden;
+  }
+  .stack-col .meter > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+  .stack-col .n {
+    text-align: right;
+    color: var(--grey);
+    font-size: var(--t-micro);
+  }
+</style>

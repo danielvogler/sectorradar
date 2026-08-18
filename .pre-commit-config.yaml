@@ -1,0 +1,80 @@
+---
+# Install with: uv run pre-commit install --install-hooks
+# Run over everything with: uv run pre-commit run --all-files
+default_install_hook_types: [pre-commit, commit-msg]
+default_language_version:
+  python: python3.11
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=512]
+        # uv.lock is a generated text file we deliberately commit, and it is
+        # legitimately over the limit. Excluding it by name keeps the 512 KB
+        # guard tight for everything else rather than raising it globally.
+        exclude: ^uv\.lock$
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+        # The handoff spec is a fixed input document; keep it byte-stable.
+        exclude: ^notes/sectorradar-handoff\.md$
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+        exclude: ^notes/sectorradar-handoff\.md$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.3
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.9.28
+    hooks:
+      # Keeps uv.lock honest whenever pyproject.toml moves.
+      - id: uv-lock
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      # The upstream mypy mirror runs in its own isolated environment and cannot
+      # see project dependencies, which produces phantom import errors. Run the
+      # project's own mypy instead.
+      - id: mypy
+        name: mypy (strict)
+        entry: uv run --frozen mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+
+      - id: no-gcp-service-account-keys
+        name: no GCP service account keys
+        language: pygrep
+        entry: '"type"\s*:\s*"service_account"'
+        types: [json]
+
+      - id: no-agent-coauthors
+        name: no AI Co-Authored-By trailers
+        language: pygrep
+        stages: [commit-msg]
+        args: [--ignore-case, --multiline]
+        entry: 'co-authored-by:.*(claude|anthropic|copilot|cursor|gemini|codex|chatgpt|openai)'
+
+      - id: no-collected-data
+        name: no collected data committed
+        language: fail
+        files: '^data/'
+        entry: >-
+          data/ is gitignored by design and must never be committed.
+          See DATA.md for why.

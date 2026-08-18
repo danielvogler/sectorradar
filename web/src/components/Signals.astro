@@ -1,0 +1,102 @@
+---
+/**
+ * What a website has, by company size, grouped by what the answer is for.
+ *
+ * A flat list of fifteen characteristics is a list nobody reads. Grouped, it
+ * becomes four separate questions — can they prove delivery, how do they sell,
+ * why should you believe them, how big are they — and each group can be opened
+ * on its own. The rows within a group are directly comparable; rows across
+ * groups mostly are not, which is the argument for the grouping.
+ */
+import type { SignalByBand } from '../lib/types';
+
+interface Props {
+  signals: SignalByBand[];
+}
+const { signals } = Astro.props;
+
+const GROUPS: { title: string; blurb: string; members: string[] }[] = [
+  {
+    title: 'Can they prove it',
+    blurb: 'Evidence of work actually delivered',
+    members: ['case_studies', 'named_clients', 'quantified_outcomes', 'industry_pages'],
+  },
+  {
+    title: 'How they sell',
+    blurb: 'What a visitor is asked to do next',
+    members: ['pricing_published', 'free_assessment', 'demo_or_trial', 'methodology_described'],
+  },
+  {
+    title: 'Why believe them',
+    blurb: 'Third-party credibility',
+    members: ['certifications', 'partner_badges', 'open_source', 'events_or_talks'],
+  },
+  {
+    title: 'How big they look',
+    blurb: 'Signals of size and momentum',
+    members: ['team_page', 'careers_page', 'blog'],
+  },
+];
+
+const bands = ['1-9', '10-49', '50-249', '250+', 'unknown'];
+const present = bands.filter((b) => signals.some((s) => s.by_band[b] !== undefined));
+const pct = (v: number | undefined) => (v === undefined ? '—' : `${Math.round(v * 100)}%`);
+
+const byName = new Map(signals.map((s) => [s.signal, s]));
+const grouped = GROUPS.map((g) => ({
+  ...g,
+  rows: g.members.map((m) => byName.get(m)).filter((s): s is SignalByBand => s !== undefined),
+})).filter((g) => g.rows.length > 0);
+
+// Anything the extractor produced that no group claims. Better shown in a
+// leftovers group than silently dropped — a missing row is invisible, and an
+// unexpected one is a prompt that has drifted from this file.
+const claimed = new Set(GROUPS.flatMap((g) => g.members));
+const others = signals.filter((s) => !claimed.has(s.signal));
+if (others.length > 0) {
+  grouped.push({ title: 'Other', blurb: 'Not yet grouped', members: [], rows: others });
+}
+---
+
+<div class="panel">
+  <div class="head">
+    <h2>What their websites have</h2>
+    <span class="muted">share of companies, by headcount</span>
+  </div>
+  <div class="body">
+    {signals.length === 0 ? (
+      <p class="muted">
+        Not recorded yet. Site characteristics come from the deeper extraction pass.
+      </p>
+    ) : (
+      grouped.map((group, index) => (
+        <details class="sig-group" open={index === 0}>
+          <summary>
+            <span class="g-title">{group.title}</span>
+            <span class="muted">{group.blurb}</span>
+          </summary>
+          <div class="scroll-x">
+            <table class="grid">
+              <thead>
+                <tr>
+                  <th>the site has</th>
+                  {present.map((b) => <th class="num">{b}</th>)}
+                  <th class="num">all</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.rows.map((s) => (
+                  <tr>
+                    <td>{s.signal.replace(/_/g, ' ')}</td>
+                    {present.map((b) => <td class="num">{pct(s.by_band[b])}</td>)}
+                    <td class="num"><strong>{pct(s.overall)}</strong></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ))
+    )}
+  </div>
+</div>

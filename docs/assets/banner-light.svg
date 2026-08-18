@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" role="img" aria-label="sectorradar — who else is in this market">
+  <title>sectorradar</title>
+  <!-- The app's hero, as a still. Same palette, same type, same restraint:
+       an eyebrow, the wordmark, one line under it, and a scatter of points
+       standing in for the map. Nothing here is decoration for its own sake. -->
+  <rect width="1200" height="340" fill="#FDFDFB"/>
+  <rect y="339" width="1200" height="1" fill="#E5E4DE"/>
+
+  <g font-family="Archivo, ui-sans-serif, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+    <!-- eyebrow -->
+    <circle cx="72" cy="74" r="4" fill="#FF000D"/>
+    <text x="88" y="79" font-size="14" font-weight="600" letter-spacing="2.2" fill="#6F6F6B">MARKET MAP</text>
+
+    <!-- wordmark -->
+    <text x="70" y="182" font-size="92" letter-spacing="-4.2">
+      <tspan fill="#0E0E10" font-weight="700">sector</tspan><tspan fill="#6F6F6B" font-weight="400">radar</tspan>
+    </text>
+    <circle cx="600" cy="153" r="12" fill="#FF000D"/>
+
+    <!-- one line, as on the page -->
+    <text x="72" y="238" font-size="25" fill="#6F6F6B">Who is serving this market, where are they,</text>
+    <text x="72" y="274" font-size="25" fill="#6F6F6B">and what do they actually sell?</text>
+
+    <text x="72" y="316" font-size="14" fill="#A3A39D">An agentic deep search that keeps going until the market is thoroughly mapped.</text>
+  </g>
+
+  <!-- A scatter, sized like the map's clusters. -->
+  <g opacity="0.9">
+    <circle cx="905" cy="128" r="30" fill="#FF000D"/><text x="905" y="135" text-anchor="middle" font-family="Archivo, sans-serif" font-size="19" font-weight="700" fill="#fff">54</text>
+    <circle cx="1010" cy="196" r="22" fill="#FF000D" opacity="0.82"/><text x="1010" y="203" text-anchor="middle" font-family="Archivo, sans-serif" font-size="15" font-weight="700" fill="#fff">16</text>
+    <circle cx="852" cy="228" r="17" fill="#FF000D" opacity="0.66"/><text x="852" y="234" text-anchor="middle" font-family="Archivo, sans-serif" font-size="13" font-weight="700" fill="#fff">9</text>
+    <circle cx="1088" cy="112" r="13" fill="#FF000D" opacity="0.5"/>
+    <circle cx="962" cy="270" r="10" fill="#FF000D" opacity="0.42"/>
+    <circle cx="1118" cy="248" r="8" fill="#A3A39D" opacity="0.55"/>
+    <circle cx="828" cy="150" r="7" fill="#A3A39D" opacity="0.45"/>
+  </g>
+</svg>

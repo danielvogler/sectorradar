@@ -1,0 +1,311 @@
+---
+/**
+ * The whole page body, given a dataset that definitely exists.
+ *
+ * Extracted from `index.astro` for one concrete reason: the page loads its
+ * data with a glob that may find nothing, so `data` is nullable, and every
+ * reference to it inside the template had to be narrowed. Astro's checker
+ * loses that narrowing across a fragment boundary and reports the failure as a
+ * syntax error at the closing tag — a long way from the cause, and it cost an
+ * hour. A component with a required prop cannot have the problem: the null
+ * check happens once, at the boundary, and nothing below it is optional.
+ *
+ * It also put a 400-line page file back under 100.
+ */
+import type { Dataset } from '../lib/types';
+import Metrics from './Metrics.astro';
+import Bars from './Bars.astro';
+import Shape from './Shape.astro';
+import Signals from './Signals.astro';
+import Search from './Search.astro';
+import Stack from './Stack.astro';
+
+interface Props {
+  data: Dataset;
+}
+const { data } = Astro.props;
+
+const a = data.analytics;
+const segment = data.segment;
+const companies = data.companies;
+
+const cantons = [...new Set(companies.map((c) => c.canton).filter(Boolean))].sort();
+const services = [
+  ...new Set(
+    companies.flatMap((c) =>
+      c.tags.filter((t) => t.facet === 'service_type').map((t) => t.value),
+    ),
+  ),
+].sort();
+const industries = [
+  ...new Set(
+    companies.flatMap((c) => c.tags.filter((t) => t.facet === 'vertical').map((t) => t.value)),
+  ),
+].sort();
+---
+
+      <section class="band" style="padding-top:0">
+        <Metrics companies={companies} />
+      </section>
+
+      <section class="band" id="companies">
+        <div class="section-head">
+          <h2>Who is in this market, and where</h2>
+          <p>
+            The map and the list answer the same question about the same
+            filtered set. Click a point to narrow the list to the companies
+            there; click a company for everything recorded about it.
+          </p>
+        </div>
+        <div class="filters">
+        <label class="find">
+          find a company
+          <input id="f-q" type="search" placeholder="name, domain, client, technology…" />
+        </label>
+        <label>
+          tier
+          <select id="f-tier">
+            <option value="in" selected>in the segment (1-4)</option>
+            <option value="1">1 — primary offering</option>
+            <option value="2">2 — among other things</option>
+            <option value="3">3 — service line</option>
+            <option value="4">4 — training only</option>
+            <option value="none">excluded, with reason</option>
+            <option value="">everything, including excluded</option>
+          </select>
+        </label>
+        <label>
+          canton
+          <select id="f-canton">
+            <option value="">all</option>
+            {cantons.map((c) => <option value={c}>{c}</option>)}
+          </select>
+        </label>
+        <label>
+          does
+          <select id="f-service">
+            <option value="">any</option>
+            {services.map((s) => <option value={s}>{s.replace(/_/g, ' ')}</option>)}
+          </select>
+        </label>
+        <label>
+          industry
+          <select id="f-industry">
+            <option value="">any</option>
+            {industries.map((s) => <option value={s}>{s}</option>)}
+          </select>
+        </label>
+        <label>
+          size
+          <select id="f-size">
+            <option value="">any</option>
+            <option value="1-9">1–9</option>
+            <option value="10-49">10–49</option>
+            <option value="50-249">50–249</option>
+            <option value="250+">250+</option>
+            <option value="unknown">unknown</option>
+          </select>
+        </label>
+        <label>
+          has
+          <select id="f-has">
+            <option value="">anything</option>
+            <option value="case_studies">case studies</option>
+            <option value="clients">named clients</option>
+            <option value="products">a product</option>
+          </select>
+        </label>
+        <label>
+          sort by
+          <select id="f-sort">
+            <option value="tier">relevance tier</option>
+            <option value="traction">visible traction</option>
+            <option value="evidence">most evidence</option>
+            <option value="size">team size</option>
+          </select>
+        </label>
+          <label class="check">
+            <input id="f-own" type="checkbox" />
+            only mine
+          </label>
+          <button class="reset" id="f-reset">reset</button>
+        </div>
+      </section>
+
+      <div class="split">
+        <div class="panel">
+          <div class="head">
+            <h2>Where they are</h2>
+            <span class="muted" id="map-count"></span>
+          </div>
+          <div id="map"></div>
+        </div>
+
+        <div class="panel">
+          <div class="head">
+            <h2>Who they are</h2>
+            <span class="muted" id="list-count"></span>
+          </div>
+          <div class="hint">
+            Click any company for its full record — projects, named clients,
+            products, press, technologies, and what its site is missing for
+            search.
+          </div>
+          <div class="spot" id="spotlight" hidden></div>
+          <div class="list" id="list"></div>
+        </div>
+      </div>
+      </section>
+
+      <section class="band" id="market">
+        <div class="section-head">
+          <h2>The shape of the market</h2>
+          <p>
+            What this field sells, how big its firms are, and which sectors
+            it has actually delivered into. Solid bars are companies with a
+            named client or written case study; pale ones claim the sector
+            without one. Figures exclude companies marked as yours.
+          </p>
+        </div>
+        <Shape
+          services={a.services}
+          bySize={a.by_size}
+          byCanton={a.by_canton}
+          industries={a.industries}
+          training={a.stack?.workshop_formats ?? []}
+          compared={a.compared}
+        />
+      </section>
+
+      <section class="band" id="stack">
+        <div class="section-head">
+          <h2>What they build with</h2>
+          <p>
+            Named on their own sites. Where a system runs is the one here
+            worth reading first — in a market selling to banks and
+            hospitals it often decides a shortlist before any capability
+            does.
+          </p>
+        </div>
+        <Stack
+          stack={a.stack}
+          compared={a.compared}
+          title="What they build with"
+          keys={['hosting', 'cloud_providers', 'technologies', 'certifications']}
+        />
+      </section>
+
+      <section class="band" id="search">
+        <div class="section-head">
+          <h2>Why some of them get found</h2>
+          <p>
+            Measured from each site's markup, so every figure has a right
+            answer and no model was asked to guess at one. It covers what a
+            site controls itself — not backlinks, authority or actual
+            rankings, which need an index this tool does not have.
+          </p>
+        </div>
+        <div class="two-up">
+          <Search search={a.search} />
+          {(a.stack?.languages ?? []).length > 0 && (
+            <div class="panel">
+              <div class="head">
+                <h2>How far each site reaches</h2>
+              </div>
+              <div class="body">
+                <Bars
+                  items={a.stack.languages}
+                  total={a.compared}
+                  note="Sites published in each language. A Swiss buyer searching in French will not find a German-only site."
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section class="band">
+        <div class="section-head">
+          <h2>What their websites carry</h2>
+          <p>
+            Presentation rather than capability, by company size. Four
+            questions, each answerable on its own: can they prove delivery,
+            how do they sell, why believe them, how big do they look.
+          </p>
+        </div>
+        <Signals signals={a.signals} />
+      </section>
+
+      {segment && (
+      <section class="band" id="method">
+        <div class="section-head">
+          <h2>How this was assembled</h2>
+          <p>
+            Every figure above is relative to one definition and one set of
+            queries. Both are below, so you can tell the difference between
+            "there are no providers in Uri" and "nothing we ran looked
+            there".
+          </p>
+        </div>
+        <details class="config">
+          <summary>What this dataset looked for</summary>
+          <div class="config-body">
+            <p class="muted">
+              Every figure above is relative to this definition. Read it before
+              concluding that a canton has no providers — it may only mean that
+              nothing below went looking there.
+            </p>
+
+            <h3>Inclusion rule</h3>
+            <p class="rule">{segment.inclusion}</p>
+
+            <h3>Tiers</h3>
+            <table class="grid">
+              <tbody>
+                {Object.entries(segment.tiers).map(([n, text]) => (
+                  <tr><td class="num">{n}</td><td>{text}</td></tr>
+                ))}
+              </tbody>
+            </table>
+
+            <h3>Where it looked</h3>
+            <p>
+              {segment.sources_enabled.map((s) => (
+                <span class="chip">{s.replace(/_/g, ' ')}</span>
+              ))}
+            </p>
+
+            <h3>Search terms ({segment.queries.length})</h3>
+            <p class="queries">
+              {segment.queries.map((q) => <span class="chip">{q}</span>)}
+            </p>
+
+            <h3>Vocabulary</h3>
+            {Object.entries(segment.facets).map(([facet, values]) => (
+              <p>
+                <span class="muted">{facet.replace(/_/g, ' ')}</span><br />
+                {values.map((v) => <span class="chip">{v.replace(/_/g, ' ')}</span>)}
+              </p>
+            ))}
+
+            <p class="muted">
+              Segment <code>{segment.slug}</code> · country {segment.country}
+              · enriched at tiers {segment.enrich_tiers.join(', ')}
+              · recall measured against {segment.gold_set_size} known companies.
+              This is one YAML file; pointing the tool at a different market is
+              writing a different one.
+            </p>
+          </div>
+        </details>
+      </section>
+      )}
+
+      <footer class="foot">
+      <p class="muted">
+        Nothing on this page was written by the tool. Open any company to see
+        the quote from their own website behind every line, with a link to the
+        page it sits on. Aggregates leave out candidates the classifier ruled
+        out of the segment, and any company marked as yours, so a comparison is
+        against the field rather than an average you are inside.
+      </p>
+      </footer>

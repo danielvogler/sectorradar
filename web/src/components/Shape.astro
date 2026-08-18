@@ -1,0 +1,177 @@
+---
+/**
+ * The market's four distributions, in one frame.
+ *
+ * They were four panels in a grid, and a 23-row industry list beside a 5-row
+ * size breakdown turned the row into a staircase with gaps nobody could read
+ * past. Same fix as the stack panel: columns inside one panel, divided by
+ * hairlines rather than by gutters, so uneven lengths read as columns of
+ * different lengths instead of cards that failed to line up.
+ *
+ * Industries carries a second number — companies with a named client or case
+ * study in the sector, as against companies that merely claim it — so its
+ * bars are split. The gap between the two is the interesting part: a sector
+ * everybody lists and nobody has worked in is a different situation from one
+ * nobody mentions.
+ */
+import type { Count, IndustryCoverage } from '../lib/types';
+
+interface Props {
+  services: Count[];
+  bySize: Count[];
+  byCanton: Count[];
+  industries: IndustryCoverage[];
+  training: Count[];
+  compared: number;
+}
+const { services, bySize, byCanton, industries, training, compared } = Astro.props;
+
+type Row = { label: string; n: number; solid?: number };
+
+const columns: { title: string; blurb: string; rows: Row[]; scroll?: boolean }[] = [
+  {
+    title: 'What they sell',
+    blurb: 'named services, grounded in site text',
+    rows: services.map((c) => ({ label: c.label, n: c.n })),
+    scroll: true,
+  },
+  {
+    title: 'Industries served',
+    blurb: 'solid = a named client or case study there',
+    rows: industries.map((i) => ({
+      label: i.industry,
+      n: i.providers,
+      solid: i.with_evidence,
+    })),
+    scroll: true,
+  },
+  {
+    title: 'How big they are',
+    blurb: 'headcount, where published',
+    rows: bySize.map((c) => ({ label: c.label, n: c.n })),
+  },
+  {
+    title: 'Where they are',
+    blurb: 'canton of the registered office',
+    rows: byCanton.map((c) => ({ label: c.label, n: c.n })),
+    scroll: true,
+  },
+  {
+    title: 'Training formats',
+    blurb: 'how teaching is delivered',
+    rows: training.map((c) => ({ label: c.label, n: c.n })),
+  },
+].filter((c) => c.rows.length > 0);
+---
+
+<div class="panel">
+  <div class="head">
+    <h2>The shape of the market</h2>
+    <span class="muted">of {compared} companies compared</span>
+  </div>
+
+  <div class="shape-grid">
+    {
+      columns.map((column) => {
+        const max = Math.max(1, ...column.rows.map((r) => r.n));
+        return (
+          <section class="shape-col">
+            <h3>{column.title}</h3>
+            <p class="muted">{column.blurb}</p>
+            <ul class={column.scroll ? 'scrolls' : ''}>
+              {column.rows.map((row) => (
+                <li>
+                  <span class="k" title={row.label}>
+                    {row.label.replace(/_/g, ' ')}
+                  </span>
+                  <span class="meter" aria-hidden="true">
+                    <span class="solid" style={`width:${((row.solid ?? row.n) / max) * 100}%`} />
+                    <span
+                      class="claim"
+                      style={`width:${(Math.max(0, row.n - (row.solid ?? row.n)) / max) * 100}%`}
+                    />
+                  </span>
+                  <span class="n tabular">{row.n}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })
+    }
+  </div>
+</div>
+
+<style>
+  .shape-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  }
+  .shape-col {
+    padding: var(--s-4);
+    border-right: 1px solid var(--hair-2);
+    border-bottom: 1px solid var(--hair-2);
+    min-width: 0;
+  }
+  .shape-col h3 {
+    font-size: var(--t-small);
+    font-weight: 600;
+  }
+  .shape-col > p {
+    margin: 0.15rem 0 var(--s-3);
+    font-size: var(--t-micro);
+  }
+  .shape-col ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.3rem;
+  }
+  /* Long lists scroll inside their own column rather than setting the height
+     of the whole row. Roughly nine rows visible, which is enough to see the
+     shape of a distribution without the tail dictating the layout. */
+  .shape-col ul.scrolls {
+    max-height: 13.5rem;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--hair) transparent;
+    padding-right: 0.2rem;
+  }
+  .shape-col li {
+    display: grid;
+    grid-template-columns: 1fr 2.6rem 1.7rem;
+    gap: var(--s-2);
+    align-items: center;
+    font-size: var(--t-small);
+  }
+  .shape-col .k {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink-2);
+  }
+  .shape-col .meter {
+    display: flex;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--sunken);
+    overflow: hidden;
+  }
+  .shape-col .meter > span {
+    display: block;
+    height: 100%;
+    flex: none;
+  }
+  .shape-col .meter .solid {
+    background: var(--accent);
+  }
+  .shape-col .meter .claim {
+    background: #ffb3b7;
+  }
+  .shape-col .n {
+    text-align: right;
+    color: var(--grey);
+    font-size: var(--t-micro);
+  }
+</style>

@@ -1,0 +1,153 @@
+[project]
+name = "sectorradar"
+version = "0.1.0"
+description = "Turn a market segment into a structured, browsable dataset. Gathers publicly available company information, organises it with source citations, and serves it as a filterable table and map."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Daniel Vogler" }]
+maintainers = [{ name = "Daniel Vogler" }]
+keywords = [
+  "market-research",
+  "company-data",
+  "open-data",
+  "data-pipeline",
+  "sqlite",
+  "llm",
+  "switzerland",
+  "geospatial",
+  "research-tools",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Database",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Typing :: Typed",
+]
+dependencies = [
+  "typer>=0.15",
+  "pydantic>=2.9",
+  "pyyaml>=6.0",
+  "httpx>=0.28",
+  "python-dotenv>=1.0",
+  "structlog>=24.4",
+  "rapidfuzz>=3.10",
+  "selectolax>=0.3.21",
+  "google-genai>=1.0",
+  "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+# Publishing to Google Cloud Storage. Optional on purpose: the tool is fully
+# useful with no cloud account at all, and nobody should have to install a
+# cloud SDK to look at a map of Swiss companies.
+gcp = ["google-cloud-storage>=2.18"]
+
+# Alternative model providers. Optional because the tool runs on any one of
+# them and nobody should install three SDKs to use one.
+anthropic = ["anthropic>=0.40"]
+openai = ["openai>=1.50"]
+
+[project.urls]
+Homepage = "https://github.com/danielvogler/sectorradar"
+Repository = "https://github.com/danielvogler/sectorradar"
+Issues = "https://github.com/danielvogler/sectorradar/issues"
+Changelog = "https://github.com/danielvogler/sectorradar/blob/main/CHANGELOG.md"
+
+[project.scripts]
+sectorradar = "sectorradar.cli:app"
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=6",
+  "ruff>=0.9",
+  "mypy>=1.14",
+  "pre-commit>=4",
+  "types-pyyaml>=6",
+  "types-openpyxl>=3.1.5.20260807",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sectorradar"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+# notes/ is prose. Ruff formats Python blocks inside Markdown, and the handoff
+# spec is a fixed input document that must not be rewritten by a formatter.
+exclude = ["notes"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "PTH", "RUF", "T20", "S", "N", "W"]
+ignore = [
+  # Ruff's formatter owns line wrapping; E501 fights it on long string literals.
+  "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, use fixtures with shadowing names, and hardcode throwaway values.
+"tests/*" = ["S101", "S105", "S106", "S311"]
+# Entry points are allowed to print: that is their job.
+"src/sectorradar/cli.py" = ["T20"]
+# A verification reporter's entire job is to print its findings.
+"scripts/*" = ["T20"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sectorradar"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+python_version = "3.11"
+warn_unreachable = true
+warn_unused_ignores = true
+show_error_codes = true
+
+# Untyped third parties, listed explicitly. Never set this globally.
+[[tool.mypy.overrides]]
+module = ["selectolax.*", "google.cloud.*", "anthropic.*", "openai.*"]
+ignore_missing_imports = true
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers --strict-config"
+markers = [
+  "network: test performs live network I/O (deselect in CI with -m 'not network')",
+  "llm: test spends money on an LLM provider (deselect in CI with -m 'not llm')",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+# Two decimals, and the floor lives here rather than on the command line.
+#
+# With the default precision of 0, coverage compares the *rounded* figure: at
+# 79.68% it printed "FAIL Required test coverage of 80% not reached" and then
+# exited 0, because 79.68 rounds to 80. A gate that reports its own failure and
+# passes anyway is worse than no gate — it teaches you to read past the word
+# FAIL.
+precision = 2
+fail_under = 80
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@overload",
+]

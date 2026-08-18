@@ -1,0 +1,72 @@
+---
+/**
+ * What you are looking at, before any of the numbers.
+ *
+ * A page of aggregates is uninterpretable without the definition behind them,
+ * and the definition used to be buried in a disclosure at the bottom. The
+ * headline is the segment, the sentence under it is the inclusion rule in the
+ * operator's own words, and the line below that says how much was examined to
+ * produce what is shown.
+ */
+import type { SegmentConfig } from '../lib/types';
+
+interface Props {
+  segment: SegmentConfig;
+  examined: number;
+  inSegment: number;
+  /** When the crawl and extraction last ran. */
+  collected: string;
+  /** When this page was built from that data. */
+  generated: string;
+}
+const { segment, examined, inSegment, collected, generated } = Astro.props;
+
+// One line, in the order the work happened: this many were looked at, this
+// many qualified, gathered then, rendered then.
+//
+// It used to carry a third figure — the same count again with the operator's
+// own companies removed — which meant three numbers for what a reader takes to
+// be one thing. Anybody who needs that subtraction can do it.
+//
+// The query count and source list left too: they describe how the set was
+// assembled, which is what the Method section at the foot of the page is for.
+
+// A segment name follows "<what they do>, <where>" — for example
+// "Pilates studios, Zürich". Split on the last comma so the region sits under
+// the subject rather than running past the edge of the line.
+const comma = segment.name.lastIndexOf(',');
+const subject = comma > 0 ? segment.name.slice(0, comma) : segment.name;
+const region = comma > 0 ? segment.name.slice(comma + 1).trim() : '';
+
+const rule = segment.inclusion.replace(/\s+/g, ' ').trim();
+const day = (iso: string) => (iso ? iso.slice(0, 10) : '');
+---
+
+<section class="hero">
+  <div class="wrap">
+    <!-- No wordmark here. It sits in the header two centimetres above, and
+         repeating it gave the page two red dots and two casings of the same
+         name — the eyebrow's `text-transform` uppercased one of them. The
+         eyebrow says what kind of page this is; the header says what tool
+         made it. -->
+    <p class="eyebrow">
+      <span class="live" aria-hidden="true"></span>
+      Market map
+    </p>
+
+    <h1>
+      {subject}{region && <><br /><span style="color:var(--faint)">{region}</span></>}
+    </h1>
+
+    <p class="lede">{rule}</p>
+
+    <p class="meta">
+      <span class="tabular">{examined}</span> candidates examined,
+      <strong class="tabular">{inSegment}</strong> in the segment
+      <span class="sep">·</span>
+      searched {day(collected)}
+      <span class="sep">·</span>
+      page built {day(generated)}
+    </p>
+  </div>
+</section>

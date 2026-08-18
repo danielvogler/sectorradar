@@ -1,0 +1,5 @@
+dist/
+node_modules/
+.astro/
+# Generated from the database by `sectorradar export --format web`.
+src/data/*.json

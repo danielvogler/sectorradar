@@ -1,0 +1,125 @@
+---
+# Pilates studios in and around Zürich.
+#
+# The small one. It exists so you can run the whole pipeline end to end in
+# minutes rather than an hour, on a market you can sanity-check by eye —
+# if it returns a physiotherapy practice or a gym in Bern, you will know
+# immediately, which is exactly what you want from a first run.
+#
+#     uv run sectorradar run --segment pilates-zurich
+#     make serve SEGMENT=pilates-zurich
+#
+# It is also a fair test of the parts that matter: a market with a real
+# boundary problem (studios versus gyms versus physiotherapy), sold almost
+# entirely in German, where the vocabulary on the page is nothing like the
+# English facet names.
+slug: pilates-zurich
+name: Pilates studios, Zürich
+
+geo:
+  country: CH
+  cantons: [ZH]
+
+own_domains: []
+
+# The boundary here is genuinely hard, which is the point of using it as a
+# test. Half the gyms in the city run a pilates class, most physiotherapy
+# practices offer something they call pilates, and neither is a pilates
+# studio. The exclusions do the work.
+inclusion: >
+  Include a business if it offers, as a named service on its own website,
+  Pilates instruction to the public — studio classes, reformer or equipment
+  sessions, private tuition, or teacher training.
+  Include studios that combine Pilates with yoga or barre, where Pilates is
+  named as its own offering rather than as one item in a timetable.
+  Exclude general gyms and fitness chains that merely list a Pilates class
+  among many others.
+  Exclude physiotherapy and medical practices where Pilates is a treatment
+  modality rather than an offering to the public.
+  Exclude individual instructors with no studio and no registered business.
+  Exclude businesses outside the canton of Zürich.
+
+tiers:
+  1: "A dedicated Pilates studio — it is what the business is"
+  2: "A studio where Pilates is one of two or three named disciplines"
+  3: "A wellness or movement studio with Pilates as one service among several"
+  4: "Teacher training or workshops only"
+
+enrich_tiers: [1, 2]
+
+# Written as value → evidence words, and this is where the segment earns its
+# keep as a test: the market is German-speaking and almost none of the facet
+# names appear on a page. `equipment` never matches *Reformer*, and
+# `teacher_training` never matches *Ausbildung*.
+facets:
+  service_type:
+    group_classes: ["gruppenkurse", "gruppenstunden", "kurse", "gruppentraining", "classes"]
+    private_sessions: ["einzelstunden", "privatstunden", "personal training", "einzeltraining"]
+    equipment: ["reformer", "cadillac", "gerätetraining", "tower", "chair", "allegro"]
+    mat_pilates: ["matte", "mattenkurs", "matwork", "mat pilates", "bodenübungen"]
+    rehab: ["rehabilitation", "rückenschmerzen", "physiotherapie", "prävention", "beckenboden"]
+    prenatal: ["schwangerschaft", "prenatal", "postnatal", "rückbildung", "mama"]
+    teacher_training: ["ausbildung", "lehrgang", "teacher training", "zertifizierung"]
+    yoga: ["yoga", "vinyasa", "hatha"]
+    barre: ["barre", "ballett", "balletttraining"]
+    online: ["online", "livestream", "video", "on demand"]
+
+  # Every facet gets evidence words, not just the interesting one. Left as
+  # bare lists these dropped most of what the classifier proposed — a value
+  # only survives if its words appear on the page, and `class_pack` is not a
+  # phrase any studio has ever written. The example that says "supply the
+  # words your market uses" has to do it everywhere, or it teaches the shape
+  # of the mistake.
+  delivery_model:
+    drop_in: ["drop-in", "einzeleintritt", "tageskarte", "einzellektion"]
+    subscription: ["abo", "abonnement", "mitgliedschaft", "monatlich", "flatrate"]
+    class_pack: ["10er", "10-er", "abokarte", "mehrfachkarte", "credits", "punktekarte"]
+    private: ["privatstunde", "einzelstunde", "personal training", "1:1"]
+    course: ["kursblock", "semester", "lehrgang", "kursreihe", "block"]
+    online: ["online", "livestream", "zoom", "on demand", "video"]
+
+  # Who the studio says it teaches. Kept short because a Pilates studio serves
+  # people rather than sectors, and a vocabulary offering choices the market
+  # cannot fill is a vocabulary that reports an empty table.
+  vertical:
+    healthcare: ["rehabilitation", "physiotherapie", "beckenboden", "rückenschmerzen", "prävention"]
+    sports_entertainment: ["athleten", "sportler", "leistungssport", "tänzer", "performance"]
+    education: ["ausbildung", "lehrgang", "zertifizierung", "weiterbildung"]
+
+sources:
+  seeds:
+    enabled: true
+    urls: []
+
+  websearch:
+    enabled: true
+    # Deliberately short. A small market saturates fast, and `deepen` will
+    # widen this on its own if there is more to find.
+    queries:
+      - "Pilates Studio Zürich"
+      - "Pilates Kurse Zürich"
+      - "Reformer Pilates Zürich"
+      - "Pilates Winterthur Studio"
+      - "Pilates Zürich Oerlikon"
+      - "Pilates Ausbildung Zürich"
+      - "Pilates Einzelstunden Zürich"
+      - "Pilates Schwangerschaft Zürich"
+      - "pilates studio zurich english"
+      - "Barre Pilates Zürich"
+
+  # Off for this one. The register describes a company's legal purpose, which
+  # for a small studio is usually "Betrieb eines Fitnessstudios" or nothing
+  # useful at all — high noise for no recall on a market this size.
+  lindas:
+    enabled: false
+
+  jobads:
+    enabled: false
+
+  registry_lookup:
+    enabled: false
+
+# Fill this in before your first run: three or four studios you already know
+# exist. It takes a minute and it is the only thing that tells you whether
+# discovery worked, as opposed to whether it ran.
+gold_set: []

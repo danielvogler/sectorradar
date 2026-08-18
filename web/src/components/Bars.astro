@@ -1,0 +1,95 @@
+---
+/**
+ * One distribution, capped so a long tail cannot stretch a panel.
+ *
+ * Four of these sit side by side, and a 23-row list beside a 5-row one turns
+ * the row into a staircase. The tail is disclosed rather than dropped: "18
+ * more not shown" tells you something is missing and gives you no way to see
+ * it, which is the worst of both.
+ */
+import type { Count } from '../lib/types';
+
+interface Props {
+  items: Count[];
+  total: number;
+  limit?: number;
+  note?: string;
+}
+const { items, total, limit = 8, note } = Astro.props;
+
+const head = items.slice(0, limit);
+const tail = items.slice(limit);
+const max = Math.max(1, ...items.map((i) => i.n));
+---
+
+{
+  items.length === 0 ? (
+    <p class="muted">Nothing recorded yet.</p>
+  ) : (
+    <>
+      <div class="bars">
+        {head.map((i) => (
+          <div class="bar">
+            <span title={i.label}>{i.label.replace(/_/g, ' ')}</span>
+            <span class="track">
+              <span class="fill" style={`width:${Math.max(2, (i.n / max) * 100)}%`} />
+            </span>
+            <span class="n">{i.n}</span>
+          </div>
+        ))}
+      </div>
+
+      {tail.length > 0 && (
+        <details class="tail">
+          <summary>{tail.length} more</summary>
+          <div class="bars">
+            {tail.map((i) => (
+              <div class="bar">
+                <span title={i.label}>{i.label.replace(/_/g, ' ')}</span>
+                <span class="track">
+                  <span class="fill" style={`width:${Math.max(2, (i.n / max) * 100)}%`} />
+                </span>
+                <span class="n">{i.n}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      <p class="muted" style="margin:.6rem 0 0">
+        {note ?? `of ${total} companies compared`}
+      </p>
+    </>
+  )
+}
+
+<style>
+  details.tail {
+    margin-top: 0.3rem;
+  }
+  details.tail summary {
+    cursor: pointer;
+    list-style: none;
+    font-size: var(--t-micro);
+    color: var(--grey);
+    padding: 0.25rem 0;
+  }
+  details.tail summary::-webkit-details-marker {
+    display: none;
+  }
+  details.tail summary::before {
+    content: '\203A';
+    display: inline-block;
+    margin-right: 0.35rem;
+    transition: transform var(--fast) var(--ease);
+  }
+  details.tail[open] summary::before {
+    transform: rotate(90deg);
+  }
+  details.tail summary:hover {
+    color: var(--ink);
+  }
+  details.tail .bars {
+    margin-top: 0.3rem;
+  }
+</style>

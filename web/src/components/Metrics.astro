@@ -1,0 +1,52 @@
+---
+/**
+ * Six counts, all derived from the same list the rest of the page filters.
+ *
+ * They used to come from `analytics`, which excludes the operator's own
+ * companies from every baseline — correct for a comparison, wrong for a
+ * headline. The hero said 141 in the segment and the first card said 139, two
+ * paragraphs apart, and a reader has no way to know those are different
+ * questions. A headline counts what is there.
+ *
+ * Six identical cards. Every attempt to rank one above the others
+ * typographically made the row look broken rather than hierarchical.
+ */
+import type { Company } from '../lib/types';
+
+interface Props {
+  companies: Company[];
+}
+const { companies } = Astro.props;
+
+const inSegment = companies.filter((c) => c.tier !== null);
+const excluded = companies.length - inSegment.length;
+const tier = (n: number) => inSegment.filter((c) => c.tier === n).length;
+const sum = (pick: (c: Company) => number) => inSegment.reduce((n, c) => n + pick(c), 0);
+
+const cards = [
+  { value: inSegment.length, label: 'in the segment', foot: `${excluded} examined, excluded` },
+  { value: tier(1), label: 'tier 1', foot: 'primary offering' },
+  { value: tier(2), label: 'tier 2', foot: 'among other things' },
+  {
+    value: sum((c) => c.case_studies.length),
+    label: 'reference projects',
+    foot: 'each with a quote',
+  },
+  { value: sum((c) => c.clients.length), label: 'named clients', foot: 'named on their own sites' },
+  { value: sum((c) => c.products.length), label: 'products', foot: 'as distinct from services' },
+];
+---
+
+<div class="metrics">
+  {
+    cards.map((c) => (
+      <div class="metric">
+        <div class="value">{c.value.toLocaleString('en-CH')}</div>
+        <div class="cap">
+          <div class="label">{c.label}</div>
+          <div class="foot">{c.foot}</div>
+        </div>
+      </div>
+    ))
+  }
+</div>
